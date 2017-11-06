@@ -144,10 +144,10 @@ namespace RadeonRays {
 
             auto constexpr inf = std::numeric_limits<float>::infinity();
 
-            __m128 scene_min = _mm_set_ps(inf, inf, inf, inf);
-            __m128 scene_max = _mm_set_ps(-inf, -inf, -inf, -inf);
-            __m128 centroid_scene_min = _mm_set_ps(inf, inf, inf, inf);
-            __m128 centroid_scene_max = _mm_set_ps(-inf, -inf, -inf, -inf);
+            auto scene_min = _mm_set_ps(inf, inf, inf, inf);
+            auto scene_max = _mm_set_ps(-inf, -inf, -inf, -inf);
+            auto centroid_scene_min = _mm_set_ps(inf, inf, inf, inf);
+            auto centroid_scene_max = _mm_set_ps(-inf, -inf, -inf, -inf);
 
             std::size_t current_face = 0;
             for (auto iter = begin; iter != end; ++iter) {
@@ -157,13 +157,13 @@ namespace RadeonRays {
                     ++face_index, ++current_face) {
                     auto face = mesh->GetIndexData(face_index);
 
-                    __m128 v0 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[0]));
-                    __m128 v1 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[1]));
-                    __m128 v2 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[2]));
+                    auto v0 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[0]));
+                    auto v1 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[1]));
+                    auto v2 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[2]));
 
-                    __m128 pmin = _mm_min_ps(_mm_min_ps(v0, v1), v2);
-                    __m128 pmax = _mm_max_ps(_mm_min_ps(v0, v1), v2);
-                    __m128 centroid = _mm_mul_ps(
+                    auto pmin = _mm_min_ps(_mm_min_ps(v0, v1), v2);
+                    auto pmax = _mm_max_ps(_mm_min_ps(v0, v1), v2);
+                    auto centroid = _mm_mul_ps(
                         _mm_add_ps(pmin, pmax),
                         _mm_set_ps(0.5f, 0.5f, 0.5f, 0.5f));
 
@@ -222,7 +222,7 @@ namespace RadeonRays {
             std::iota(refs.begin(), refs.end(), 0);
 
             _MM_ALIGN16 SplitRequest requests[kStackSize];
-            std::uint32_t sptr = 0u;
+            auto sptr = 0u;
 
             auto max_nodes = num_aabbs * 2 - 1;
             nodes_ = reinterpret_cast<Node*>(
@@ -286,17 +286,17 @@ namespace RadeonRays {
                             request.centroid_aabb_min)),
                     split_axis);
 
-                std::size_t split_idx = request.start_index;
+                auto split_idx = request.start_index;
 
-                __m128 lmin = m128_plus_inf;
-                __m128 lmax = m128_minus_inf;
-                __m128 rmin = m128_plus_inf;
-                __m128 rmax = m128_minus_inf;
+                auto lmin = m128_plus_inf;
+                auto lmax = m128_minus_inf;
+                auto rmin = m128_plus_inf;
+                auto rmax = m128_minus_inf;
 
-                __m128 lcmin = m128_plus_inf;
-                __m128 lcmax = m128_minus_inf;
-                __m128 rcmin = m128_plus_inf;
-                __m128 rcmax = m128_minus_inf;
+                auto lcmin = m128_plus_inf;
+                auto lcmax = m128_minus_inf;
+                auto rcmin = m128_plus_inf;
+                auto rcmax = m128_minus_inf;
 
                 // Partition
                 if (split_axis_extent > 0.f) {
@@ -325,7 +325,7 @@ namespace RadeonRays {
                             lmin = _mm_min_ps(lmin, _mm_load_ps(&aabb_min[idx].x));
                             lmax = _mm_max_ps(lmax, _mm_load_ps(&aabb_max[idx].x));
 
-                            __m128 c = _mm_load_ps(&aabb_centroid[idx].x);
+                            auto c = _mm_load_ps(&aabb_centroid[idx].x);
                             lcmin = _mm_min_ps(lcmin, c);
                             lcmax = _mm_max_ps(lcmax, c);
 
@@ -338,7 +338,7 @@ namespace RadeonRays {
                         rmin = _mm_min_ps(rmin, _mm_load_ps(&aabb_min[idx].x));
                         rmax = _mm_max_ps(rmax, _mm_load_ps(&aabb_max[idx].x));
 
-                        __m128 c = _mm_load_ps(&aabb_centroid[idx].x);
+                        auto c = _mm_load_ps(&aabb_centroid[idx].x);
                         rcmin = _mm_min_ps(rcmin, c);
                         rcmax = _mm_max_ps(rcmax, c);
 
@@ -348,7 +348,7 @@ namespace RadeonRays {
                             rmin = _mm_min_ps(rmin, _mm_load_ps(&aabb_min[idx].x));
                             rmax = _mm_max_ps(rmax, _mm_load_ps(&aabb_max[idx].x));
 
-                            __m128 c = _mm_load_ps(&aabb_centroid[idx].x);
+                            auto c = _mm_load_ps(&aabb_centroid[idx].x);
                             rcmin = _mm_min_ps(rcmin, c);
                             rcmax = _mm_max_ps(rcmax, c);
 
@@ -405,7 +405,7 @@ namespace RadeonRays {
                         lmin = _mm_min_ps(lmin, _mm_load_ps(&aabb_min[idx].x));
                         lmax = _mm_max_ps(lmax, _mm_load_ps(&aabb_max[idx].x));
 
-                        __m128 c = _mm_load_ps(&aabb_centroid[idx].x);
+                        auto c = _mm_load_ps(&aabb_centroid[idx].x);
                         lcmin = _mm_min_ps(lcmin, c);
                         lcmax = _mm_max_ps(lcmax, c);
                     }
@@ -417,7 +417,7 @@ namespace RadeonRays {
                         rmin = _mm_min_ps(rmin, _mm_load_ps(&aabb_min[idx].x));
                         rmax = _mm_max_ps(rmax, _mm_load_ps(&aabb_max[idx].x));
 
-                        __m128 c = _mm_load_ps(&aabb_centroid[idx].x);
+                        auto c = _mm_load_ps(&aabb_centroid[idx].x);
                         rcmin = _mm_min_ps(rcmin, c);
                         rcmax = _mm_max_ps(rcmax, c);
                     }
