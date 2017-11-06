@@ -43,26 +43,26 @@ namespace RadeonRays {
 
         Shape() = default;
         virtual ~Shape() = 0;
-        virtual bool is_instance() const { return false; }
+        virtual bool is_instance() const noexcept{ return false; }
 
-        void SetTransform(matrix const& m) { 
+        void SetTransform(matrix const& m) noexcept {
             transform_ = m; 
             state_change_ |= kStateChangeTransform;
         }
-        auto GetTransform() const { return transform_; }
-        void SetId(Id id) { 
+        auto GetTransform() const noexcept { return transform_; }
+        void SetId(Id id) noexcept {
             id_ = id; 
             state_change_ |= kStateChangeId;
         }
-        auto GetId() const { return id_; }
-        void SetMask(Mask mask) { 
+        auto GetId() const noexcept { return id_; }
+        void SetMask(Mask mask) noexcept {
             mask_ = mask;
             state_change_ |= kStateChangeMask;
         }
-        auto GetMask() const { return mask_; }
-        void OnCommit() const { state_change_ = kStateChangeNone; }
+        auto GetMask() const noexcept { return mask_; }
+        void OnCommit() const noexcept { state_change_ = kStateChangeNone; }
 
-        StateChange state_change() const { return state_change_; }
+        StateChange state_change() const noexcept { return state_change_; }
 
     private:
         matrix transform_;

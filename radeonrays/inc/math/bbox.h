@@ -89,12 +89,14 @@ namespace RadeonRays
         float3 pmax;
     };
 
+#define BBOX_INTERSECTION_EPS 1e-5f
+
     inline bool   bbox::contains(float3 const& p) const
     {
         float3 radius = 0.5f * extents();
-        return std::abs(center().x - p.x) <= radius.x &&
-            fabs(center().y - p.y) <= radius.y &&
-            fabs(center().z - p.z) <= radius.z;
+        return std::abs(center().x - p.x) <= (radius.x + BBOX_INTERSECTION_EPS) &&
+            fabs(center().y - p.y) <= (radius.y + BBOX_INTERSECTION_EPS) &&
+            fabs(center().z - p.z) <= (radius.z + BBOX_INTERSECTION_EPS);
     }
 
     inline bbox bboxunion(bbox const& box1, bbox const& box2)
@@ -115,8 +117,6 @@ namespace RadeonRays
         vmax(box1.pmin, box2.pmin, box.pmin);
         vmin(box1.pmax, box2.pmax, box.pmax);
     }
-
-#define BBOX_INTERSECTION_EPS 0.f
 
     inline bool intersects(bbox const& box1, bbox const& box2)
     {

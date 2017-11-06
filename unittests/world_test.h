@@ -159,4 +159,3 @@ TEST_F(WorldTest, MeshBounds) {
 
     delete mesh;
 }
-

@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 
 #include "world_test.h"
+#include "bvh_test.h"
 
 int main(int argc, char **argv) {
     testing::InitGoogleTest(&argc, argv);

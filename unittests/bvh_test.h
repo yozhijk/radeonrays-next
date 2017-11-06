@@ -21,29 +21,54 @@ THE SOFTWARE.
 ********************************************************************/
 #pragma once
 
+#include "gtest/gtest.h"
+
+#include "world.h"
+#include "mesh.h"
+#include "bvh.h"
+#define TINYOBJLOADER_IMPLEMENTATION
+#include "tiny_obj_loader.h"
+
 #include <vector>
-#include <memory>
 
-#include "shape.h"
-#include "math/float3.h"
-#include "math/float2.h"
+class BvhTest : public ::testing::Test {
+public:
+
+    void SetUp() override {
+        std::string err;
+        auto ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, "../../data/cornellbox.obj");
+        ASSERT_TRUE(ret);
+
+        for (auto& shape : shapes) {
+            auto mesh = new RadeonRays::Mesh(
+                &attrib.vertices[0],
+                (std::uint32_t)attrib.vertices.size(),
+                sizeof(float) * 3,
+                (std::uint32_t*)&shape.mesh.indices[0].vertex_index,
+                (std::uint32_t)sizeof(tinyobj::index_t),
+                (std::uint32_t)(shape.mesh.indices.size() / 3));
+
+            world.AttachShape(mesh);
+        }
+    }
+
+    void TearDown() override {
+    }
+
+    RadeonRays::World world;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    tinyobj::attrib_t attrib;
+    RadeonRays::Bvh<int, int> bvh;
+};
+
+TEST_F(BvhTest, BuildBVH) {
+    bvh.Build(world.cbegin(), world.cend());
+
+    RadeonRays::float4 pmin;
+    RadeonRays::float4 pmax{ 1.f, 2.f, 3.f, 0.f };
 
 
-namespace RadeonRays
-{
-    class Instance : public Shape
-    {
-    public:
-        Instance(Shape const* base_shape) noexcept
-        : base_shape_(base_shape) {}
-
-        auto base_shape() const noexcept { return base_shape_;  }
-        bool is_instance() const noexcept override { return true; }
-
-        Instance(Instance const&) = default;
-        Instance& operator=(Instance const&) = default;
-
-    private:
-        Shape const* base_shape_;
-    };
 }
+
+

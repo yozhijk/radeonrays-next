@@ -23,6 +23,7 @@ THE SOFTWARE.
 
 #include <vector>
 #include <memory>
+#include <array>
 #include <cassert>
 
 #include "shape.h"
@@ -63,10 +64,13 @@ namespace RadeonRays {
         auto index_stride() const { return index_stride_; }
 
         auto GetFaceBounds(int face_index, CoordinateSpace space = CoordinateSpace::kWorld) const {
-            float3 vertices[3];
-            GetTransformedFace(face_index, space == CoordinateSpace::kLocal ? matrix() : GetTransform(), vertices);
+            auto vertices = GetTransformedVertices(
+                face_index, 
+                space == CoordinateSpace::kLocal ? matrix() : GetTransform());
+
             bbox bounds{ vertices[0], vertices[1] };
             bounds.grow(vertices[2]);
+
             return bounds;
         }
 
@@ -75,6 +79,14 @@ namespace RadeonRays {
             return *reinterpret_cast<float3 const*>(
                 reinterpret_cast<char const*>(vertices_) + vertex_index * vertex_stride_);
         }
+        auto GetVertexDataPtr(std::size_t vertex_index) const {
+            return reinterpret_cast<float3 const*>(
+                reinterpret_cast<char const*>(vertices_) + vertex_index * vertex_stride_);
+        }
+        auto GetFaceVertexData(std::size_t face_index) const {
+            return GetTransformedVertices(face_index, matrix());
+        }
+
         auto GetIndexData() const { return indices_; }
         auto GetIndexData(std::size_t face_index) const {
             Face face;
@@ -95,17 +107,27 @@ namespace RadeonRays {
             return bounds;
         }
 
-        Mesh(Mesh const&) = delete;
-        Mesh& operator =(Mesh const&) = delete;
+        Mesh(Mesh const&) = default;
+        Mesh& operator =(Mesh const&) = default;
 
     private:
-         std::uint32_t GetTransformedFace(int face_index, matrix const& transform, float3* out_vertices) const {
+        std::array<float3, 3> GetTransformedVertices(std::size_t face_index, matrix const& transform) const {
             auto face = GetIndexData(face_index);
-            out_vertices[0] = transform_point(GetVertexData(face.idx[0]), transform);
-            out_vertices[1] = transform_point(GetVertexData(face.idx[1]), transform);
-            out_vertices[2] = transform_point(GetVertexData(face.idx[2]), transform);
-            return 3u;
+            std::array<float3, 3> vertices;
+            vertices[0] = transform_point(GetVertexData(face.idx[0]), transform);
+            vertices[1] = transform_point(GetVertexData(face.idx[1]), transform);
+            vertices[2] = transform_point(GetVertexData(face.idx[2]), transform);
+            return vertices;
         }
+
+        std::array<float3, 3> GetFaceVertices(std::size_t face_index) const {
+             auto face = GetIndexData(face_index);
+             std::array<float3, 3> vertices;
+             vertices[0] = GetVertexData(face.idx[0]);
+             vertices[1] = GetVertexData(face.idx[1]);
+             vertices[2] = GetVertexData(face.idx[2]);
+             return vertices;
+         }
 
         float3 const* vertices_;
         std::size_t num_vertices_;
