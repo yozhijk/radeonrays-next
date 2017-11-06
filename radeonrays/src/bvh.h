@@ -23,16 +23,19 @@ THE SOFTWARE.
 
 #include <math/float3.h>
 
+#include <iostream>
 #include <memory>
 #include <limits>
 #include <numeric>
 #include <xmmintrin.h>
+#include <smmintrin.h>
 
 #include "mesh.h"
 
 namespace RadeonRays {
 
     struct aligned_allocator {
+#ifdef WIN32
         static void* allocate(std::size_t size, std::size_t alignement) {
             return _aligned_malloc(size, alignement);
         }
@@ -40,14 +43,22 @@ namespace RadeonRays {
         static void deallocate(void* ptr) {
             return _aligned_free(ptr);
         }
+#else
+        static void* allocate(std::size_t size, std::size_t) {
+            return malloc(size);
+        }
+
+        static void deallocate(void* ptr) {
+            return free(ptr);
+        }
+#endif
     };
 
 #ifdef __GNUC__
 #define clz(x) __builtin_clz(x)
 #define ctz(x) __builtin_ctz(x)
 #else
-    inline std::uint32_t popcnt(std::uint32_t x)
-    {
+    inline std::uint32_t popcnt(std::uint32_t x) {
         x -= ((x >> 1) & 0x55555555);
         x = (((x >> 2) & 0x33333333) + (x & 0x33333333));
         x = (((x >> 4) + x) & 0x0f0f0f0f);
@@ -55,8 +66,7 @@ namespace RadeonRays {
         x += (x >> 16);
         return x & 0x0000003f;
     }
-    inline std::uint32_t clz(std::uint32_t x)
-    {
+    inline std::uint32_t clz(std::uint32_t x) {
         x |= (x >> 1);
         x |= (x >> 2);
         x |= (x >> 4);
@@ -64,9 +74,7 @@ namespace RadeonRays {
         x |= (x >> 16);
         return 32 - popcnt(x);
     }
-
-    inline std::uint32_t ctz(std::uint32_t x)
-    {
+    inline std::uint32_t ctz(std::uint32_t x) {
         return popcnt((std::uint32_t)(x & -(int)x) - 1);
     }
 #endif
@@ -131,7 +139,7 @@ namespace RadeonRays {
 
             auto aabb_centroid = aligned_float3_ptr(
                 reinterpret_cast<float3*>(
-                    typename Allocator::allocate(sizeof(float3) * num_items, 16u)),
+                    Allocator::allocate(sizeof(float3) * num_items, 16u)),
                     deleter);
 
             auto constexpr inf = std::numeric_limits<float>::infinity();
@@ -438,7 +446,7 @@ namespace RadeonRays {
                 request_left.start_index = request.start_index;
                 request_left.num_refs = split_idx - request.start_index;
                 request_left.level = request.level + 1;
-                auto child_base = request_left.index = free_node_idx++;
+                //auto child_base = request_left.index = free_node_idx++;
 
                 if (sptr == kStackSize) {
                     throw std::runtime_error("Build stack overflow");

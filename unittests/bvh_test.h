@@ -38,12 +38,24 @@ public:
         std::string err;
         auto ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, "../../data/cornellbox.obj");
         ASSERT_TRUE(ret);
+        ASSERT_GT(shapes.size(), 0u);
+
+        vertices.resize(attrib.vertices.size() / 3);
+
+        for (auto i = 0u; i < attrib.vertices.size() / 3; ++i) {
+            vertices[i].x = attrib.vertices[3 * i];
+            vertices[i].y = attrib.vertices[3 * i + 1];
+            vertices[i].z = attrib.vertices[3 * i + 2];
+            vertices[i].w = 1.f;
+        }
+
+        attrib.vertices.clear();
 
         for (auto& shape : shapes) {
             auto mesh = new RadeonRays::Mesh(
-                &attrib.vertices[0],
-                (std::uint32_t)attrib.vertices.size(),
-                sizeof(float) * 3,
+                &vertices[0].x,
+                (std::uint32_t)vertices.size(),
+                sizeof(RadeonRays::float3),
                 (std::uint32_t*)&shape.mesh.indices[0].vertex_index,
                 (std::uint32_t)sizeof(tinyobj::index_t),
                 (std::uint32_t)(shape.mesh.indices.size() / 3));
@@ -58,6 +70,7 @@ public:
     RadeonRays::World world;
     std::vector<tinyobj::shape_t> shapes;
     std::vector<tinyobj::material_t> materials;
+    std::vector<RadeonRays::float3> vertices;
     tinyobj::attrib_t attrib;
     RadeonRays::Bvh<int, int> bvh;
 };
