@@ -152,7 +152,9 @@ namespace RadeonRays {
             std::size_t current_face = 0;
             for (auto iter = begin; iter != end; ++iter) {
                 auto mesh = static_cast<Mesh const*>(*iter);
-                for (std::size_t face_index = 0; face_index < mesh->num_faces(); ++face_index, ++current_face) {
+                for (std::size_t face_index = 0;
+                    face_index < mesh->num_faces();
+                    ++face_index, ++current_face) {
                     auto face = mesh->GetIndexData(face_index);
 
                     __m128 v0 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[0]));
@@ -161,7 +163,9 @@ namespace RadeonRays {
 
                     __m128 pmin = _mm_min_ps(_mm_min_ps(v0, v1), v2);
                     __m128 pmax = _mm_max_ps(_mm_min_ps(v0, v1), v2);
-                    __m128 centroid = _mm_mul_ps(_mm_add_ps(pmin, pmax), _mm_set_ps(0.5f, 0.5f, 0.5f, 0.5f));
+                    __m128 centroid = _mm_mul_ps(
+                        _mm_add_ps(pmin, pmax),
+                        _mm_set_ps(0.5f, 0.5f, 0.5f, 0.5f));
 
                     scene_min = _mm_min_ps(scene_min, pmin);
                     scene_max = _mm_max_ps(scene_max, pmax);
@@ -271,13 +275,15 @@ namespace RadeonRays {
                     request.centroid_aabb_max);
 
                 auto split_axis_extent = mm_select(
-                    _mm_sub_ps(request.centroid_aabb_max, request.centroid_aabb_min),
+                    _mm_sub_ps(request.centroid_aabb_max,
+                        request.centroid_aabb_min),
                     split_axis);
 
                 auto split_value = mm_select(
                     _mm_mul_ps(
                         _mm_set_ps(0.5f, 0.5f, 0.5f, 0.5),
-                        _mm_add_ps(request.centroid_aabb_max, request.centroid_aabb_min)),
+                        _mm_add_ps(request.centroid_aabb_max,
+                            request.centroid_aabb_min)),
                     split_axis);
 
                 std::size_t split_idx = request.start_index;
@@ -380,7 +386,8 @@ namespace RadeonRays {
 #endif
                 }
 
-                if (split_idx == request.start_index || split_idx == request.start_index + request.num_refs) {
+                if (split_idx == request.start_index ||
+                    split_idx == request.start_index + request.num_refs) {
                     split_idx = request.start_index + (request.num_refs >> 1);
 
                     lmin = m128_plus_inf;
@@ -403,7 +410,9 @@ namespace RadeonRays {
                         lcmax = _mm_max_ps(lcmax, c);
                     }
 
-                    for (auto i = split_idx; i < request.start_index + request.num_refs; ++i) {
+                    for (auto i = split_idx;
+                        i < request.start_index + request.num_refs;
+                        ++i) {
                         auto idx = refs[i];
                         rmin = _mm_min_ps(rmin, _mm_load_ps(&aabb_min[idx].x));
                         rmax = _mm_max_ps(rmax, _mm_load_ps(&aabb_max[idx].x));
@@ -417,16 +426,12 @@ namespace RadeonRays {
 #ifdef TEST
                 {
                     bbox left, right, parent;
-                    _mm_store_ps(&left.pmin.x, lmin); _mm_store_ps(&left.pmax.x, lmax);
-                    _mm_store_ps(&right.pmin.x, rmin); _mm_store_ps(&right.pmax.x, rmax);
-                    _mm_store_ps(&parent.pmin.x, request.aabb_min); _mm_store_ps(&parent.pmax.x, request.aabb_max);
-
-                    if (!contains(parent, left) || !contains(parent, right))
-                    {
-                        contains(parent, left);
-                        contains(parent, right);
-                        ASSERT_TRUE(false);
-                    }
+                    _mm_store_ps(&left.pmin.x, lmin);
+                    _mm_store_ps(&left.pmax.x, lmax);
+                    _mm_store_ps(&right.pmin.x, rmin);
+                    _mm_store_ps(&right.pmax.x, rmax);
+                    _mm_store_ps(&parent.pmin.x, request.aabb_min);
+                    _mm_store_ps(&parent.pmax.x, request.aabb_max);
 
                     ASSERT_TRUE(contains(parent, left));
                     ASSERT_TRUE(contains(parent, right));
