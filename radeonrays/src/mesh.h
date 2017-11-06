@@ -34,6 +34,15 @@ THE SOFTWARE.
 namespace RadeonRays {
     class Mesh : public Shape {
     public:
+        enum class CoordinateSpace {
+            kLocal,
+            kWorld
+        };
+
+        struct Face {
+            int idx[3];
+        };
+
         Mesh(float const* vertices,
             std::uint32_t num_vertices,
             std::uint32_t vertex_stride,
@@ -50,24 +59,40 @@ namespace RadeonRays {
 
         auto num_faces() const { return num_indices_ / 3; }
         auto num_vertices() const { return num_vertices_; }
-        auto GetFaceBounds(int face_index, bool object_space) const {
+        auto vertex_stride() const { return vertex_stride_; }
+        auto index_stride() const { return index_stride_; }
+
+        auto GetFaceBounds(int face_index, CoordinateSpace space = CoordinateSpace::kWorld) const {
             float3 vertices[3];
-            GetTransformedFace(face_index, object_space ? matrix() : GetTransform(), vertices);
+            GetTransformedFace(face_index, space == CoordinateSpace::kLocal ? matrix() : GetTransform(), vertices);
             bbox bounds{ vertices[0], vertices[1] };
             bounds.grow(vertices[2]);
             return bounds;
         }
 
         auto GetVertexData() const { return vertices_; }
-        auto GetVertexData(std::size_t face_index) const {
-            return reinterpret_cast<float3 const*>(
-                reinterpret_cast<char const*>(vertices_) + face_index * vertex_stride_);
+        auto GetVertexData(std::size_t vertex_index) const {
+            return *reinterpret_cast<float3 const*>(
+                reinterpret_cast<char const*>(vertices_) + vertex_index * vertex_stride_);
         }
-
         auto GetIndexData() const { return indices_; }
         auto GetIndexData(std::size_t face_index) const {
-            return reinterpret_cast<std::uint32_t const*>(
+            Face face;
+            face.idx[0] = *reinterpret_cast<std::uint32_t const*>(
                 reinterpret_cast<char const*>(indices_) + 3 * face_index * index_stride_);
+            face.idx[1] = *reinterpret_cast<std::uint32_t const*>(
+                reinterpret_cast<char const*>(indices_) + (3 * face_index + 1) * index_stride_);
+            face.idx[2] = *reinterpret_cast<std::uint32_t const*>(
+                reinterpret_cast<char const*>(indices_) + (3 * face_index + 2) * index_stride_);
+            return face;
+        }
+
+        auto GetBounds(CoordinateSpace space = CoordinateSpace::kWorld) const {
+            bbox bounds;
+            for (std::uint32_t i = 0; i < num_faces(); ++i) {
+                bounds.grow(GetFaceBounds(i, space));
+            }
+            return bounds;
         }
 
         Mesh(Mesh const&) = delete;
@@ -75,19 +100,19 @@ namespace RadeonRays {
 
     private:
          std::uint32_t GetTransformedFace(int face_index, matrix const& transform, float3* out_vertices) const {
-            auto face_indices = GetIndexData(face_index);
-            out_vertices[0] = transform_point(*GetVertexData(face_indices[0]), transform);
-            out_vertices[1] = transform_point(*GetVertexData(face_indices[1]), transform);
-            out_vertices[2] = transform_point(*GetVertexData(face_indices[2]), transform);
+            auto face = GetIndexData(face_index);
+            out_vertices[0] = transform_point(GetVertexData(face.idx[0]), transform);
+            out_vertices[1] = transform_point(GetVertexData(face.idx[1]), transform);
+            out_vertices[2] = transform_point(GetVertexData(face.idx[2]), transform);
             return 3u;
         }
 
         float3 const* vertices_;
-        std::uint32_t vertex_stride_;
         std::size_t num_vertices_;
+        std::uint32_t vertex_stride_;
 
         std::uint32_t const* indices_;
-        std::uint32_t index_stride_;
         std::size_t num_indices_;
+        std::uint32_t index_stride_;
     };
 }

@@ -49,27 +49,21 @@ namespace RadeonRays {
             transform_ = m; 
             state_change_ |= kStateChangeTransform;
         }
-
-        auto GetTransform() const { return transform_; }     
-        
+        auto GetTransform() const { return transform_; }
         void SetId(Id id) { 
             id_ = id; 
             state_change_ |= kStateChangeId;
         }
-
         auto GetId() const { return id_; }
-
         void SetMask(Mask mask) { 
             mask_ = mask;
             state_change_ |= kStateChangeMask;
         }
-
         auto GetMask() const { return mask_; }
-
         void OnCommit() const { state_change_ = kStateChangeNone; }
 
         StateChange state_change() const { return state_change_; }
-        
+
     private:
         matrix transform_;
         Mask mask_ = 0xFFFFFFFFu;
