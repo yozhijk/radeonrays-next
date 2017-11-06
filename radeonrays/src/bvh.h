@@ -80,19 +80,19 @@ namespace RadeonRays {
 #endif
 
     inline auto box_surface_area(__m128 pmin, __m128 pmax) {
-        __m128 ext = _mm_sub_ps(pmax, pmin);
-        __m128 xxy = _mm_shuffle_ps(ext, ext, _MM_SHUFFLE(3, 1, 0, 0));
-        __m128 yzz = _mm_shuffle_ps(ext, ext, _MM_SHUFFLE(3, 2, 2, 1));
+        auto ext = _mm_sub_ps(pmax, pmin);
+        auto xxy = _mm_shuffle_ps(ext, ext, _MM_SHUFFLE(3, 1, 0, 0));
+        auto yzz = _mm_shuffle_ps(ext, ext, _MM_SHUFFLE(3, 2, 2, 1));
         return _mm_mul_ps(_mm_dp_ps(xxy, yzz, 0xff), _mm_set_ps(2.f, 2.f, 2.f, 2.f));
     }
 
     inline auto max_extent_axis(__m128 pmin, __m128 pmax) {
-        __m128 xyz = _mm_sub_ps(pmax, pmin);
-        __m128 yzx = _mm_shuffle_ps(xyz, xyz, _MM_SHUFFLE(3, 0, 2, 1));
-        __m128 m0 = _mm_max_ps(xyz, yzx);
-        __m128 m1 = _mm_shuffle_ps(m0, m0, _MM_SHUFFLE(3, 0, 2, 1));
-        __m128 m2 = _mm_max_ps(m0, m1);
-        __m128 cmp = _mm_cmpeq_ps(xyz, m2);
+        auto xyz = _mm_sub_ps(pmax, pmin);
+        auto yzx = _mm_shuffle_ps(xyz, xyz, _MM_SHUFFLE(3, 0, 2, 1));
+        auto m0 = _mm_max_ps(xyz, yzx);
+        auto m1 = _mm_shuffle_ps(m0, m0, _MM_SHUFFLE(3, 0, 2, 1));
+        auto m2 = _mm_max_ps(m0, m1);
+        auto cmp = _mm_cmpeq_ps(xyz, m2);
         return ctz(_mm_movemask_ps(cmp));
     }
 
