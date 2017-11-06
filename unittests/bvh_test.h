@@ -41,7 +41,6 @@ public:
         ASSERT_GT(shapes.size(), 0u);
 
         vertices.resize(attrib.vertices.size() / 3);
-
         for (auto i = 0u; i < attrib.vertices.size() / 3; ++i) {
             vertices[i].x = attrib.vertices[3 * i];
             vertices[i].y = attrib.vertices[3 * i + 1];
@@ -50,7 +49,6 @@ public:
         }
 
         attrib.vertices.clear();
-
         for (auto& shape : shapes) {
             auto mesh = new RadeonRays::Mesh(
                 &vertices[0].x,
