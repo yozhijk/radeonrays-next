@@ -79,14 +79,18 @@ namespace RadeonRays {
     }
 #endif
 
-    inline auto box_surface_area(__m128 pmin, __m128 pmax) {
+    inline auto aabb_surface_area(__m128 pmin, __m128 pmax) {
         auto ext = _mm_sub_ps(pmax, pmin);
         auto xxy = _mm_shuffle_ps(ext, ext, _MM_SHUFFLE(3, 1, 0, 0));
         auto yzz = _mm_shuffle_ps(ext, ext, _MM_SHUFFLE(3, 2, 2, 1));
         return _mm_mul_ps(_mm_dp_ps(xxy, yzz, 0xff), _mm_set_ps(2.f, 2.f, 2.f, 2.f));
     }
 
-    inline auto max_extent_axis(__m128 pmin, __m128 pmax) {
+    inline auto aabb_extents(__m128 pmin, __m128 pmax) {
+        return _mm_sub_ps(pmax, pmin);
+    }
+
+    inline auto aabb_max_extent_axis(__m128 pmin, __m128 pmax) {
         auto xyz = _mm_sub_ps(pmax, pmin);
         auto yzx = _mm_shuffle_ps(xyz, xyz, _MM_SHUFFLE(3, 0, 2, 1));
         auto m0 = _mm_max_ps(xyz, yzx);
@@ -104,7 +108,7 @@ namespace RadeonRays {
 
     template <
         typename Node,
-        typename Node_traits,
+        typename NodeTraits,
         typename Allocator = aligned_allocator>
     class Bvh {
 
@@ -247,30 +251,19 @@ namespace RadeonRays {
             while (sptr > 0) {
                 auto request = requests[--sptr];
 
-                if (request.num_refs <= 2u) {
-                    // Create leaf here
-                    if (request.num_refs == 1u) {
-                        //nodes[request.index].SetAsLeaf(
-                        //    tri_indices[3 * refs[request.start_index]],
-                        //    tri_indices[3 * refs[request.start_index] + 1],
-                        //    tri_indices[3 * refs[request.start_index] + 2],
-                        //    0u, 0u, 0u,
-                        //    1u);
-                    }
-                    else {
-                        //nodes[request.index].SetAsLeaf(
-                        //    tri_indices[3 * refs[request.start_index]],
-                        //    tri_indices[3 * refs[request.start_index] + 1],
-                        //    tri_indices[3 * refs[request.start_index] + 2],
-                        //    tri_indices[3 * refs[request.start_index + 1]],
-                        //    tri_indices[3 * refs[request.start_index + 1] + 1],
-                        //    tri_indices[3 * refs[request.start_index + 1] + 2],
-                        //    2u);
+                if (request.num_refs <= NodeTraits::kMaxLeafPrimitives) {
+                    NodeTraits::EncodeLeaf(nodes_[request.index],
+                        static_cast<std::uint32_t>(request.num_refs));
+                    for (auto i = 0u; i < request.num_refs; ++i) {
+                        NodeTraits::SetPrimitive(
+                            nodes_[request.index],
+                            i,
+                            refs[request.start_index + i]);
                     }
                     continue;
                 }
 
-                auto split_axis = max_extent_axis(
+                auto split_axis = aabb_max_extent_axis(
                     request.centroid_aabb_min,
                     request.centroid_aabb_max);
 
@@ -298,22 +291,47 @@ namespace RadeonRays {
                 auto rcmin = m128_plus_inf;
                 auto rcmax = m128_minus_inf;
 
-                // Partition
                 if (split_axis_extent > 0.f) {
-
-                    /*split_value = request.num_refs > 16 ?
-                    FindSahSplit(
-                    request,
-                    split_axis,
-                    scene_min,
-                    scene_max,
-                    centroid_scene_min,
-                    centroid_scene_max,
-                    aabb_min,
-                    aabb_max,
-                    aabb_centroid,
-                    &refs[0]
-                    ) : split_value;*/
+                    if (request.num_refs > NodeTraits::kMinSAHPrimitives) {
+                        switch (split_axis) {
+                        case 0:
+                            split_value = FindSahSplit<0>(
+                                request,
+                                scene_min,
+                                scene_max,
+                                centroid_scene_min,
+                                centroid_scene_max,
+                                aabb_min,
+                                aabb_max,
+                                aabb_centroid,
+                                &refs[0]);
+                            break;
+                        case 1:
+                            split_value = FindSahSplit<1>(
+                                request,
+                                scene_min,
+                                scene_max,
+                                centroid_scene_min,
+                                centroid_scene_max,
+                                aabb_min,
+                                aabb_max,
+                                aabb_centroid,
+                                &refs[0]);
+                            break;
+                        case 2:
+                            split_value = FindSahSplit<2>(
+                                request,
+                                scene_min,
+                                scene_max,
+                                centroid_scene_min,
+                                centroid_scene_max,
+                                aabb_min,
+                                aabb_max,
+                                aabb_centroid,
+                                &refs[0]);
+                            break;
+                        }
+                    }
 
                     auto first = request.start_index;
                     auto last = request.start_index + request.num_refs;
@@ -438,7 +456,6 @@ namespace RadeonRays {
                 }
 #endif
 
-                // Now we have split_idx
                 if (sptr == kStackSize) {
                     throw std::runtime_error("Build stack overflow");
                 }
@@ -451,7 +468,7 @@ namespace RadeonRays {
                 request_left.start_index = request.start_index;
                 request_left.num_refs = split_idx - request.start_index;
                 request_left.level = request.level + 1;
-                //auto child_base = request_left.index = free_node_idx++;
+                auto child_base = request_left.index = free_node_idx++;
 
                 if (sptr == kStackSize) {
                     throw std::runtime_error("Build stack overflow");
@@ -467,9 +484,200 @@ namespace RadeonRays {
                 request_right.level = request.level + 1;
                 request_right.index = free_node_idx++;
 
-                // Create leaf node
-                //nodes[request.index].SetAsInternal(request.aabb_min, request.aabb_max, child_base);
+                NodeTraits::EncodeInternal(
+                    nodes_[request.index],
+                    request.aabb_min,
+                    request.aabb_max, child_base);
             }
+        }
+
+        template <std::uint32_t axis> float FindSahSplit(
+            SplitRequest const& request,
+            __m128 scene_min,
+            __m128 scene_max,
+            __m128 centroid_scene_min,
+            __m128 centroid_scene_max,
+            float3 const* aabb_min,
+            float3 const* aabb_max,
+            float3 const* aabb_centroid,
+            std::uint32_t const* refs
+        ) {
+            auto split_value = 0.f;
+            auto sah = std::numeric_limits<float>::max();
+
+            auto constexpr kNumBins = 16u;
+            __m128 bin_min[kNumBins];
+            __m128 bin_max[kNumBins];
+            std::uint32_t bin_count[kNumBins];
+
+            auto constexpr inf = std::numeric_limits<float>::infinity();
+            for (auto i = 0u; i < kNumBins; ++i)
+            {
+                bin_count[i] = 0;
+                bin_min[i] = _mm_set_ps(inf, inf, inf, inf);
+                bin_max[i] = _mm_set_ps(-inf, -inf, -inf, -inf);
+            }
+
+            auto centroid_extent = aabb_extents(request.centroid_aabb_min,
+                request.centroid_aabb_max);
+            auto centroid_min = _mm_shuffle_ps(request.centroid_aabb_min,
+                request.centroid_aabb_min,
+                _MM_SHUFFLE(axis, axis, axis, axis));
+            auto centroid_max = _mm_shuffle_ps(request.centroid_aabb_max,
+                request.centroid_aabb_max,
+                _MM_SHUFFLE(axis, axis, axis, axis));
+            centroid_extent = _mm_shuffle_ps(centroid_extent,
+                centroid_extent,
+                _MM_SHUFFLE(axis, axis, axis, axis));
+            auto centroid_extent_inv = _mm_rcp_ps(centroid_extent);
+
+            auto extents = aabb_extents(request.aabb_min, request.aabb_max);
+            auto area_inv = mm_select(
+                _mm_rcp_ps(
+                    aabb_surface_area(
+                        request.aabb_min,
+                        request.aabb_max)
+                ), 0);
+
+            auto full4 = request.num_refs & ~0x3;
+            auto res4 = request.num_refs & 0x3;
+
+            auto num_bins = _mm_set_ps(
+                (float)kNumBins, (float)kNumBins,
+                (float)kNumBins, (float)kNumBins);
+
+            for (auto i = request.start_index; i < request.start_index + full4; i += 4)
+            {
+                auto idx0 = refs[i];
+                auto idx1 = refs[i + 1];
+                auto idx2 = refs[i + 2];
+                auto idx3 = refs[i + 3];
+
+                auto c = _mm_set_ps(
+                    aabb_centroid[idx0][axis],
+                    aabb_centroid[idx1][axis],
+                    aabb_centroid[idx2][axis],
+                    aabb_centroid[idx3][axis]);
+
+                auto bin_idx = _mm_mul_ps(
+                    _mm_mul_ps(
+                        _mm_sub_ps(c, centroid_min),
+                        centroid_extent_inv), num_bins);
+
+                auto bin_idx0 = std::min(static_cast<uint32_t>(mm_select(bin_idx, 0u)), kNumBins - 1);
+                auto bin_idx1 = std::min(static_cast<uint32_t>(mm_select(bin_idx, 1u)), kNumBins - 1);
+                auto bin_idx2 = std::min(static_cast<uint32_t>(mm_select(bin_idx, 2u)), kNumBins - 1);
+                auto bin_idx3 = std::min(static_cast<uint32_t>(mm_select(bin_idx, 3u)), kNumBins - 1);
+
+#ifdef TEST
+                assert(bin_idx0 >= 0u); assert(bin_idx0 < kNumBins);
+                assert(bin_idx1 >= 0u); assert(bin_idx1 < kNumBins);
+                assert(bin_idx3 >= 0u); assert(bin_idx2 < kNumBins);
+                assert(bin_idx3 >= 0u); assert(bin_idx3 < kNumBins);
+#endif
+
+                ++bin_count[bin_idx0];
+                ++bin_count[bin_idx1];
+                ++bin_count[bin_idx2];
+                ++bin_count[bin_idx3];
+
+                bin_min[bin_idx0] = _mm_min_ps(
+                    bin_min[bin_idx0],
+                    _mm_load_ps(&aabb_min[idx0].x));
+                bin_max[bin_idx0] = _mm_max_ps(
+                    bin_max[bin_idx0],
+                    _mm_load_ps(&aabb_max[idx0].x));
+                bin_min[bin_idx1] = _mm_min_ps(
+                    bin_min[bin_idx1],
+                    _mm_load_ps(&aabb_min[idx1].x));
+                bin_max[bin_idx1] = _mm_max_ps(
+                    bin_max[bin_idx1],
+                    _mm_load_ps(&aabb_max[idx1].x));
+                bin_min[bin_idx2] = _mm_min_ps(
+                    bin_min[bin_idx2],
+                    _mm_load_ps(&aabb_min[idx2].x));
+                bin_max[bin_idx2] = _mm_max_ps(
+                    bin_max[bin_idx2],
+                    _mm_load_ps(&aabb_max[idx2].x));
+                bin_min[bin_idx3] = _mm_min_ps(
+                    bin_min[bin_idx3],
+                    _mm_load_ps(&aabb_min[idx3].x));
+                bin_max[bin_idx3] = _mm_max_ps(
+                    bin_max[bin_idx3],
+                    _mm_load_ps(&aabb_max[idx3].x));
+            }
+
+            auto cm = mm_select(centroid_min, 0u);
+            auto cei = mm_select(centroid_extent_inv, 0u);
+            for (auto i = request.start_index + full4; i < request.start_index + request.num_refs; ++i)
+            {
+                auto idx = refs[i];
+                auto bin_idx = static_cast<uint32_t>(
+                    kNumBins * ((1.f - 1e-6f) *
+                    (aabb_centroid[idx][axis] - cm) *
+                        cei));
+                ++bin_count[bin_idx];
+
+                bin_min[bin_idx] = _mm_min_ps(
+                    bin_min[bin_idx],
+                    _mm_load_ps(&aabb_min[idx].x));
+                bin_max[bin_idx] = _mm_max_ps(
+                    bin_max[bin_idx],
+                    _mm_load_ps(&aabb_max[idx].x));
+            }
+
+#ifdef TEST
+            auto num_refs = request.num_refs;
+            for (auto i = 0; i < kNumBins; ++i) {
+                num_refs -= bin_count[i];
+            }
+            assert(num_refs == 0);
+#endif
+
+            __m128 right_min[kNumBins - 1];
+            __m128 right_max[kNumBins - 1];
+            auto tmp_min = _mm_set_ps(inf, inf, inf, inf);
+            auto tmp_max = _mm_set_ps(-inf, -inf, -inf, -inf);
+
+            for (auto i = kNumBins - 1; i > 0; --i)
+            {
+                tmp_min = _mm_min_ps(tmp_min, bin_min[i]);
+                tmp_max = _mm_max_ps(tmp_max, bin_max[i]);
+
+                right_min[i - 1] = tmp_min;
+                right_max[i - 1] = tmp_max;
+            }
+
+            tmp_min = _mm_set_ps(inf, inf, inf, inf);
+            tmp_max = _mm_set_ps(-inf, -inf, -inf, -inf);
+            auto  lc = 0u;
+            auto  rc = request.num_refs;
+
+            auto split_idx = -1;
+            for (int i = 0; i < kNumBins - 1; ++i)
+            {
+                tmp_min = _mm_min_ps(tmp_min, bin_min[i]);
+                tmp_max = _mm_max_ps(tmp_max, bin_max[i]);
+                lc += bin_count[i];
+                rc -= bin_count[i];
+
+                auto lsa = mm_select(
+                    aabb_surface_area(tmp_min, tmp_max), 0);
+                auto rsa = mm_select(
+                    aabb_surface_area(right_min[i], right_max[i]), 0);
+
+                // Compute SAH
+                auto s = static_cast<float>(NodeTraits::kTraversalCost) + (lc * lsa + rc * rsa) * area_inv;
+
+                // Check if it is better than what we found so far
+                if (s < sah)
+                {
+                    split_idx = i;
+                    sah = s;
+                }
+            }
+
+            return mm_select(centroid_min, 0u) + (split_idx + 1) * (mm_select(centroid_extent, 0u) / kNumBins);
         }
 
         Node* nodes_ = nullptr;

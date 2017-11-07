@@ -10,6 +10,7 @@ target_sources(RadeonRays PRIVATE
 	${CMAKE_CURRENT_SOURCE_DIR}/src/world.h
 	${CMAKE_CURRENT_SOURCE_DIR}/src/shape.h
 	${CMAKE_CURRENT_SOURCE_DIR}/src/mesh.h
-	${CMAKE_CURRENT_SOURCE_DIR}/src/instance.h)
+	${CMAKE_CURRENT_SOURCE_DIR}/src/instance.h
+	${CMAKE_CURRENT_SOURCE_DIR}/src/bvh.h)
 
 #target_link_libraries(RadeonRays PUBLIC Vulkan::Vulkan)

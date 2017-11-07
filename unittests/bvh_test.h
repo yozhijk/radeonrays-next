@@ -31,6 +31,38 @@ THE SOFTWARE.
 
 #include <vector>
 
+struct BvhNode {
+    RadeonRays::float3 pmin;
+    RadeonRays::float3 pmax;
+    std::uint32_t refs[4];
+    std::uint32_t count;
+    std::uint32_t child_base = 0xffffffffu;
+};
+
+struct BvhNodeTraits {
+    static std::uint32_t constexpr kMaxLeafPrimitives = 4u;
+    static std::uint32_t constexpr kMinSAHPrimitives = 16u;
+    static std::uint32_t constexpr kTraversalCost = 10u;
+
+    static void EncodeLeaf(BvhNode& node, std::uint32_t num_refs) {
+        node.count = num_refs;
+    }
+
+    static void EncodeInternal(
+        BvhNode& node,
+        __m128 aabb_min,
+        __m128 aabb_max,
+        std::uint32_t child) {
+        _mm_store_ps(&node.pmin.x, aabb_min);
+        _mm_store_ps(&node.pmax.x, aabb_max);
+        node.child_base = child;
+    }
+
+    static void SetPrimitive(BvhNode& node, std::uint32_t index, std::uint32_t ref) {
+        node.refs[index] = ref;
+    }
+};
+
 class BvhTest : public ::testing::Test {
 public:
 
@@ -70,16 +102,12 @@ public:
     std::vector<tinyobj::material_t> materials;
     std::vector<RadeonRays::float3> vertices;
     tinyobj::attrib_t attrib;
-    RadeonRays::Bvh<int, int> bvh;
+    RadeonRays::Bvh<BvhNode, BvhNodeTraits> bvh;
 };
+
 
 TEST_F(BvhTest, BuildBVH) {
     bvh.Build(world.cbegin(), world.cend());
-
-    RadeonRays::float4 pmin;
-    RadeonRays::float4 pmax{ 1.f, 2.f, 3.f, 0.f };
-
-
 }
 
 
