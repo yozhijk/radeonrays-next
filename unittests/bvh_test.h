@@ -37,6 +37,8 @@ struct BvhNode {
     std::uint32_t refs[4];
     std::uint32_t count;
     std::uint32_t child_base = 0xffffffffu;
+    std::uint32_t padding0;
+    std::uint32_t padding1;
 };
 
 struct BvhNodeTraits {

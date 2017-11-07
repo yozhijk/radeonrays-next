@@ -297,10 +297,6 @@ namespace RadeonRays {
                         case 0:
                             split_value = FindSahSplit<0>(
                                 request,
-                                scene_min,
-                                scene_max,
-                                centroid_scene_min,
-                                centroid_scene_max,
                                 aabb_min,
                                 aabb_max,
                                 aabb_centroid,
@@ -309,10 +305,6 @@ namespace RadeonRays {
                         case 1:
                             split_value = FindSahSplit<1>(
                                 request,
-                                scene_min,
-                                scene_max,
-                                centroid_scene_min,
-                                centroid_scene_max,
                                 aabb_min,
                                 aabb_max,
                                 aabb_centroid,
@@ -321,10 +313,6 @@ namespace RadeonRays {
                         case 2:
                             split_value = FindSahSplit<2>(
                                 request,
-                                scene_min,
-                                scene_max,
-                                centroid_scene_min,
-                                centroid_scene_max,
                                 aabb_min,
                                 aabb_max,
                                 aabb_centroid,
@@ -493,16 +481,11 @@ namespace RadeonRays {
 
         template <std::uint32_t axis> float FindSahSplit(
             SplitRequest const& request,
-            __m128 scene_min,
-            __m128 scene_max,
-            __m128 centroid_scene_min,
-            __m128 centroid_scene_max,
             float3 const* aabb_min,
             float3 const* aabb_max,
             float3 const* aabb_centroid,
             std::uint32_t const* refs
         ) {
-            auto split_value = 0.f;
             auto sah = std::numeric_limits<float>::max();
 
             auto constexpr kNumBins = 16u;
@@ -523,15 +506,10 @@ namespace RadeonRays {
             auto centroid_min = _mm_shuffle_ps(request.centroid_aabb_min,
                 request.centroid_aabb_min,
                 _MM_SHUFFLE(axis, axis, axis, axis));
-            auto centroid_max = _mm_shuffle_ps(request.centroid_aabb_max,
-                request.centroid_aabb_max,
-                _MM_SHUFFLE(axis, axis, axis, axis));
             centroid_extent = _mm_shuffle_ps(centroid_extent,
                 centroid_extent,
                 _MM_SHUFFLE(axis, axis, axis, axis));
             auto centroid_extent_inv = _mm_rcp_ps(centroid_extent);
-
-            auto extents = aabb_extents(request.aabb_min, request.aabb_max);
             auto area_inv = mm_select(
                 _mm_rcp_ps(
                     aabb_surface_area(
@@ -540,13 +518,13 @@ namespace RadeonRays {
                 ), 0);
 
             auto full4 = request.num_refs & ~0x3;
-            auto res4 = request.num_refs & 0x3;
-
             auto num_bins = _mm_set_ps(
                 (float)kNumBins, (float)kNumBins,
                 (float)kNumBins, (float)kNumBins);
 
-            for (auto i = request.start_index; i < request.start_index + full4; i += 4)
+            for (auto i = request.start_index;
+                i < request.start_index + full4;
+                i += 4u)
             {
                 auto idx0 = refs[i];
                 auto idx1 = refs[i + 1];
@@ -628,7 +606,7 @@ namespace RadeonRays {
 
 #ifdef TEST
             auto num_refs = request.num_refs;
-            for (auto i = 0; i < kNumBins; ++i) {
+            for (auto i = 0u; i < kNumBins; ++i) {
                 num_refs -= bin_count[i];
             }
             assert(num_refs == 0);
@@ -654,7 +632,7 @@ namespace RadeonRays {
             auto  rc = request.num_refs;
 
             auto split_idx = -1;
-            for (int i = 0; i < kNumBins - 1; ++i)
+            for (auto i = 0u; i < kNumBins - 1; ++i)
             {
                 tmp_min = _mm_min_ps(tmp_min, bin_min[i]);
                 tmp_max = _mm_max_ps(tmp_max, bin_max[i]);
