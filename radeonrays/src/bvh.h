@@ -28,10 +28,17 @@ THE SOFTWARE.
 #include <limits>
 #include <numeric>
 #include <chrono>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
+
 #include <xmmintrin.h>
 #include <smmintrin.h>
 
 #include "mesh.h"
+
+#define PARALLEL_BUILD
 
 namespace RadeonRays {
 
@@ -233,7 +240,6 @@ namespace RadeonRays {
 #endif
         }
 
-
         void Clear() {
             for (auto i = 0u; i < num_nodes_; ++i) {
                 nodes_[i].~Node();
@@ -241,7 +247,6 @@ namespace RadeonRays {
             Allocator::deallocate(nodes_);
             nodes_ = nullptr;
             num_nodes_ = 0;
-            free_node_idx_ = 0u;
         }
 
         auto root() const {
@@ -490,7 +495,7 @@ namespace RadeonRays {
             request_left.start_index = request.start_index;
             request_left.num_refs = split_idx - request.start_index;
             request_left.level = request.level + 1;
-            auto child_base = request_left.index = free_node_idx_++;
+            request_left.index = request.index + 1;
 
             request_right.aabb_min = rmin;
             request_right.aabb_max = rmax;
@@ -499,13 +504,15 @@ namespace RadeonRays {
             request_right.start_index = split_idx;
             request_right.num_refs = request.num_refs - request_left.num_refs;
             request_right.level = request.level + 1;
-            request_right.index = free_node_idx_++;
+            request_right.index = static_cast<std::uint32_t>(request.index + request_left.num_refs * 2 - 1);
+
 
             NodeTraits::EncodeInternal(
                 nodes_[request.index],
                 request.aabb_min,
                 request.aabb_max,
-                child_base);
+                request_left.index,
+                request_right.index);
 
             return NodeType::kInternal;
         }
@@ -524,9 +531,6 @@ namespace RadeonRays {
             RefArray refs(num_aabbs);
             std::iota(refs.begin(), refs.end(), 0);
 
-            _MM_ALIGN16 SplitRequest requests[kStackSize];
-            auto sptr = 0u;
-
             num_nodes_ = num_aabbs * 2 - 1;
             nodes_ = reinterpret_cast<Node*>(
                 Allocator::allocate(sizeof(Node) * num_nodes_, 16u));
@@ -535,7 +539,14 @@ namespace RadeonRays {
                 new (&nodes_[i]) Node;
             }
 
-            free_node_idx_ = 1;
+            auto constexpr inf = std::numeric_limits<float>::infinity();
+            auto m128_plus_inf = _mm_set_ps(inf, inf, inf, inf);
+            auto m128_minus_inf = _mm_set_ps(-inf, -inf, -inf, -inf);
+
+//#define PARALLEL_BUILD
+#ifndef PARALLEL_BUILD
+            _MM_ALIGN16 SplitRequest requests[kStackSize];
+            auto sptr = 0u;
 
             requests[sptr++] = SplitRequest {
                 scene_min,
@@ -548,9 +559,7 @@ namespace RadeonRays {
                 0u
             };
 
-            auto constexpr inf = std::numeric_limits<float>::infinity();
-            auto m128_plus_inf = _mm_set_ps(inf, inf, inf, inf);
-            auto m128_minus_inf = _mm_set_ps(-inf, -inf, -inf, -inf);
+
 
             while (sptr > 0) {
                 auto request = requests[--sptr];
@@ -583,6 +592,91 @@ namespace RadeonRays {
                     --sptr;
                 }
             }
+#else
+            std::stack<SplitRequest> requests;
+
+            std::condition_variable cv;
+            std::mutex mutex;
+            std::atomic_bool shutdown = false;
+            std::atomic_uint32_t num_refs_processed = 0;
+
+            requests.push(SplitRequest{
+                scene_min,
+                scene_max,
+                centroid_scene_min,
+                centroid_scene_max,
+                0,
+                num_aabbs,
+                0u,
+                0u
+            });
+
+            auto worker_thread = [&]() {
+                thread_local std::stack<SplitRequest> local_requests;
+
+                while (1) {
+                    {
+                        std::unique_lock<std::mutex> lock(mutex);
+                        cv.wait(lock, [&]() { return !requests.empty() || shutdown; });
+
+                        if (shutdown) return;
+
+                        local_requests.push(requests.top());
+                        requests.pop();
+                    }
+
+                    _MM_ALIGN16 SplitRequest request_left;
+                    _MM_ALIGN16 SplitRequest request_right;
+                    _MM_ALIGN16 SplitRequest request;
+
+                    while (!local_requests.empty()) {
+                        request = local_requests.top();
+                        local_requests.pop();
+
+                        auto node_type = HandleRequest(
+                            request,
+                            aabb_min,
+                            aabb_max,
+                            aabb_centroid,
+                            metadata,
+                            refs,
+                            num_aabbs,
+                            request_left,
+                            request_right);
+
+                        if (node_type == NodeType::kLeaf) {
+                            num_refs_processed += static_cast<std::uint32_t>(request.num_refs);
+                            continue;
+                        }
+
+                        if (request_right.num_refs > 4096u) {
+                            std::unique_lock<std::mutex> lock(mutex);
+                            requests.push(request_right);
+                            cv.notify_one();
+                        }
+                        else {
+                            local_requests.push(request_right);
+                        }
+
+                        local_requests.push(request_left);
+                    }
+                }
+            };
+
+            auto num_threads = std::thread::hardware_concurrency();
+            std::vector<std::thread> threads(num_threads);
+
+            for (auto i = 0u; i < num_threads; ++i) {
+                threads[i] = std::move(std::thread(worker_thread));
+                threads[i].detach();
+            }
+
+            while (num_refs_processed != num_aabbs) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+
+            shutdown = true;
+#endif
         }
 
         template <std::uint32_t axis> float FindSahSplit(
@@ -698,10 +792,10 @@ namespace RadeonRays {
             for (auto i = request.start_index + full4; i < request.start_index + request.num_refs; ++i)
             {
                 auto idx = refs[i];
-                auto bin_idx = static_cast<uint32_t>(
-                    kNumBins * ((1.f - 1e-6f) *
+                auto bin_idx = std::min(static_cast<uint32_t>(
+                    kNumBins * 
                     (aabb_centroid[idx][axis] - cm) *
-                        cei));
+                        cei), kNumBins - 1);
                 ++bin_count[bin_idx];
 
                 bin_min[bin_idx] = _mm_min_ps(
@@ -770,6 +864,5 @@ namespace RadeonRays {
 
         Node* nodes_ = nullptr;
         std::size_t num_nodes_ = 0;
-        std::uint32_t free_node_idx_ = 0u;
     };
 }

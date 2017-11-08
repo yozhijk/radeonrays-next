@@ -36,8 +36,8 @@ THE SOFTWARE.
 struct BvhNode {
     RadeonRays::bbox bounds;
     RadeonRays::Mesh const* mesh;
-    std::uint32_t face_index;
-    std::uint32_t child_base = 0xffffffffu;
+    std::uint32_t face_index = 0xffffffffu;
+    std::uint32_t child[2]{ 0xffffffffu, 0xffffffffu };
 };
 
 struct BvhNodeTraits {
@@ -52,10 +52,13 @@ struct BvhNodeTraits {
         BvhNode& node,
         __m128 aabb_min,
         __m128 aabb_max,
-        std::uint32_t child) {
+        std::uint32_t child0,
+        std::uint32_t child1
+        ) {
         _mm_store_ps(&node.bounds.pmin.x, aabb_min);
         _mm_store_ps(&node.bounds.pmax.x, aabb_max);
-        node.child_base = child;
+        node.child[0] = child0;
+        node.child[1] = child1;
     }
 
     static void SetPrimitive(
@@ -67,11 +70,11 @@ struct BvhNodeTraits {
     }
 
     static bool IsInternal(BvhNode& node) {
-        return node.child_base != 0xffffffffu;
+        return node.child[0] != 0xffffffffu;
     }
 
     static std::uint32_t GetChildIndex(BvhNode& node, std::uint8_t idx) {
-        return IsInternal(node) ? (node.child_base + idx) : 0xffffffffu;
+        return IsInternal(node) ? (node.child[idx]) : 0xffffffffu;
     }
 };
 
