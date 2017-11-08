@@ -204,7 +204,7 @@ namespace RadeonRays {
             for (auto i = 0u; i < num_nodes_; ++i) {
                 nodes_[i].~Node();
             }
-            delete nodes_;
+            Allocator::deallocate(nodes_);
             nodes_ = nullptr;
             num_nodes_ = 0;
         }
@@ -405,7 +405,7 @@ namespace RadeonRays {
                     }
 
                     split_idx = first;
-
+#ifdef _DEBUG
 #ifdef TEST
                     {
                         for (auto i = request.start_index;
@@ -419,6 +419,7 @@ namespace RadeonRays {
                             }
                         }
                     }
+#endif
 #endif
                 }
 
@@ -459,6 +460,7 @@ namespace RadeonRays {
                     }
                 }
 
+#ifdef _DEBUG
 #ifdef TEST
                 {
                     bbox left, right, parent;
@@ -472,6 +474,7 @@ namespace RadeonRays {
                     ASSERT_TRUE(contains(parent, left));
                     ASSERT_TRUE(contains(parent, right));
                 }
+#endif
 #endif
 
                 if (sptr == kStackSize) {
@@ -505,7 +508,8 @@ namespace RadeonRays {
                 NodeTraits::EncodeInternal(
                     nodes_[request.index],
                     request.aabb_min,
-                    request.aabb_max, child_base);
+                    request.aabb_max,
+                    child_base);
             }
         }
 
@@ -577,11 +581,13 @@ namespace RadeonRays {
                 auto bin_idx2 = std::min(static_cast<uint32_t>(mm_select(bin_idx, 2u)), kNumBins - 1);
                 auto bin_idx3 = std::min(static_cast<uint32_t>(mm_select(bin_idx, 3u)), kNumBins - 1);
 
+#ifdef _DEBUG
 #ifdef TEST
                 assert(bin_idx0 >= 0u); assert(bin_idx0 < kNumBins);
                 assert(bin_idx1 >= 0u); assert(bin_idx1 < kNumBins);
                 assert(bin_idx3 >= 0u); assert(bin_idx2 < kNumBins);
                 assert(bin_idx3 >= 0u); assert(bin_idx3 < kNumBins);
+#endif
 #endif
 
                 ++bin_count[bin_idx0];
@@ -634,12 +640,14 @@ namespace RadeonRays {
                     _mm_load_ps(&aabb_max[idx].x));
             }
 
+#ifdef _DEBUG
 #ifdef TEST
             auto num_refs = request.num_refs;
             for (auto i = 0u; i < kNumBins; ++i) {
                 num_refs -= bin_count[i];
             }
             assert(num_refs == 0);
+#endif
 #endif
 
             __m128 right_min[kNumBins - 1];
