@@ -27,6 +27,7 @@ THE SOFTWARE.
 #include <memory>
 #include <limits>
 #include <numeric>
+#include <chrono>
 #include <xmmintrin.h>
 #include <smmintrin.h>
 
@@ -112,6 +113,12 @@ namespace RadeonRays {
         typename Allocator = aligned_allocator>
     class Bvh {
         using MetaDataArray = std::vector<std::pair<Mesh const*, std::size_t>>;
+        using RefArray = std::vector<std::uint32_t>;
+
+        enum class NodeType {
+            kLeaf,
+            kInternal
+        };
 
     public:
         template<typename Iter> void Build(Iter begin, Iter end) {
@@ -149,6 +156,11 @@ namespace RadeonRays {
 
             MetaDataArray metadata(num_items);
 
+#ifndef _DEBUG
+#ifdef TEST
+            auto start = std::chrono::high_resolution_clock::now();
+#endif
+#endif
             auto constexpr inf = std::numeric_limits<float>::infinity();
 
             auto scene_min = _mm_set_ps(inf, inf, inf, inf);
@@ -188,6 +200,19 @@ namespace RadeonRays {
                 }
             }
 
+#ifndef _DEBUG
+#ifdef TEST
+            auto delta = std::chrono::high_resolution_clock::now() - start;
+            std::cout << "AABB calculation time " << std::chrono::duration_cast<
+                std::chrono::milliseconds>(delta).count() << " ms\n";
+#endif
+#endif
+
+#ifndef _DEBUG
+#ifdef TEST
+            start = std::chrono::high_resolution_clock::now();
+#endif
+#endif
             BuildImpl(
                 scene_min,
                 scene_max,
@@ -198,7 +223,16 @@ namespace RadeonRays {
                 aabb_centroid.get(),
                 metadata,
                 num_items);
+
+#ifndef _DEBUG
+#ifdef TEST
+            delta = std::chrono::high_resolution_clock::now() - start;
+            std::cout << "Pure build time " << std::chrono::duration_cast<
+                std::chrono::milliseconds>(delta).count() << " ms\n";
+#endif
+#endif
         }
+
 
         void Clear() {
             for (auto i = 0u; i < num_nodes_; ++i) {
@@ -207,6 +241,7 @@ namespace RadeonRays {
             Allocator::deallocate(nodes_);
             nodes_ = nullptr;
             num_nodes_ = 0;
+            free_node_idx_ = 0u;
         }
 
         auto root() const {
@@ -234,6 +269,247 @@ namespace RadeonRays {
             std::uint32_t index;
         };
 
+        NodeType HandleRequest(
+            SplitRequest const& request,
+            float3 const* aabb_min,
+            float3 const* aabb_max,
+            float3 const* aabb_centroid,
+            MetaDataArray const& metadata,
+            RefArray& refs,
+            std::size_t num_aabbs,
+            SplitRequest& request_left,
+            SplitRequest& request_right
+        ) {
+            if (request.num_refs <= NodeTraits::kMaxLeafPrimitives) {
+                NodeTraits::EncodeLeaf(nodes_[request.index],
+                    static_cast<std::uint32_t>(request.num_refs));
+                for (auto i = 0u; i < request.num_refs; ++i) {
+                    auto face_data = metadata[refs[request.start_index + i]];
+                    NodeTraits::SetPrimitive(
+                        nodes_[request.index],
+                        i,
+                        face_data
+                    );
+                }
+
+                return NodeType::kLeaf;
+            }
+
+            auto split_axis = aabb_max_extent_axis(
+                request.centroid_aabb_min,
+                request.centroid_aabb_max);
+
+            auto split_axis_extent = mm_select(
+                _mm_sub_ps(request.centroid_aabb_max,
+                    request.centroid_aabb_min),
+                split_axis);
+
+            auto split_value = mm_select(
+                _mm_mul_ps(
+                    _mm_set_ps(0.5f, 0.5f, 0.5f, 0.5),
+                    _mm_add_ps(request.centroid_aabb_max,
+                        request.centroid_aabb_min)),
+                split_axis);
+
+            auto split_idx = request.start_index;
+
+            auto constexpr inf = std::numeric_limits<float>::infinity();
+            auto m128_plus_inf = _mm_set_ps(inf, inf, inf, inf);
+            auto m128_minus_inf = _mm_set_ps(-inf, -inf, -inf, -inf);
+
+            auto lmin = m128_plus_inf;
+            auto lmax = m128_minus_inf;
+            auto rmin = m128_plus_inf;
+            auto rmax = m128_minus_inf;
+
+            auto lcmin = m128_plus_inf;
+            auto lcmax = m128_minus_inf;
+            auto rcmin = m128_plus_inf;
+            auto rcmax = m128_minus_inf;
+
+            if (split_axis_extent > 0.f) {
+                if (request.num_refs > NodeTraits::kMinSAHPrimitives) {
+                    switch (split_axis) {
+                    case 0:
+                        split_value = FindSahSplit<0>(
+                            request,
+                            aabb_min,
+                            aabb_max,
+                            aabb_centroid,
+                            &refs[0]);
+                        break;
+                    case 1:
+                        split_value = FindSahSplit<1>(
+                            request,
+                            aabb_min,
+                            aabb_max,
+                            aabb_centroid,
+                            &refs[0]);
+                        break;
+                    case 2:
+                        split_value = FindSahSplit<2>(
+                            request,
+                            aabb_min,
+                            aabb_max,
+                            aabb_centroid,
+                            &refs[0]);
+                        break;
+                    }
+                }
+
+                auto first = request.start_index;
+                auto last = request.start_index + request.num_refs;
+
+                while (1) {
+                    while ((first != last) &&
+                        aabb_centroid[refs[first]][split_axis] < split_value) {
+                        auto idx = refs[first];
+                        lmin = _mm_min_ps(lmin, _mm_load_ps(&aabb_min[idx].x));
+                        lmax = _mm_max_ps(lmax, _mm_load_ps(&aabb_max[idx].x));
+
+                        auto c = _mm_load_ps(&aabb_centroid[idx].x);
+                        lcmin = _mm_min_ps(lcmin, c);
+                        lcmax = _mm_max_ps(lcmax, c);
+
+                        ++first;
+                    }
+
+                    if (first == last--) break;
+
+                    auto idx = refs[first];
+                    rmin = _mm_min_ps(rmin, _mm_load_ps(&aabb_min[idx].x));
+                    rmax = _mm_max_ps(rmax, _mm_load_ps(&aabb_max[idx].x));
+
+                    auto c = _mm_load_ps(&aabb_centroid[idx].x);
+                    rcmin = _mm_min_ps(rcmin, c);
+                    rcmax = _mm_max_ps(rcmax, c);
+
+                    while ((first != last) &&
+                        aabb_centroid[refs[last]][split_axis] >= split_value) {
+                        auto idx = refs[last];
+                        rmin = _mm_min_ps(rmin, _mm_load_ps(&aabb_min[idx].x));
+                        rmax = _mm_max_ps(rmax, _mm_load_ps(&aabb_max[idx].x));
+
+                        auto c = _mm_load_ps(&aabb_centroid[idx].x);
+                        rcmin = _mm_min_ps(rcmin, c);
+                        rcmax = _mm_max_ps(rcmax, c);
+
+                        --last;
+                    }
+
+                    if (first == last) break;
+
+                    idx = refs[last];
+                    lmin = _mm_min_ps(lmin, _mm_load_ps(&aabb_min[idx].x));
+                    lmax = _mm_max_ps(lmax, _mm_load_ps(&aabb_max[idx].x));
+
+                    c = _mm_load_ps(&aabb_centroid[idx].x);
+                    lcmin = _mm_min_ps(lcmin, c);
+                    lcmax = _mm_max_ps(lcmax, c);
+
+                    std::swap(refs[first++], refs[last]);
+                }
+
+                split_idx = first;
+#ifdef _DEBUG
+#ifdef TEST
+                {
+                    for (auto i = request.start_index;
+                        i < request.start_index + request.num_refs;
+                        ++i) {
+                        if (i < split_idx) {
+                            ASSERT_LT(aabb_centroid[refs[i]][split_axis], split_value);
+                        }
+                        else {
+                            ASSERT_GE(aabb_centroid[refs[i]][split_axis], split_value);
+                        }
+                    }
+                }
+#endif
+#endif
+            }
+
+            if (split_idx == request.start_index ||
+                split_idx == request.start_index + request.num_refs) {
+                split_idx = request.start_index + (request.num_refs >> 1);
+
+                lmin = m128_plus_inf;
+                lmax = m128_minus_inf;
+                rmin = m128_plus_inf;
+                rmax = m128_minus_inf;
+
+                lcmin = m128_plus_inf;
+                lcmax = m128_minus_inf;
+                rcmin = m128_plus_inf;
+                rcmax = m128_minus_inf;
+
+                for (auto i = request.start_index; i < split_idx; ++i) {
+                    auto idx = refs[i];
+                    lmin = _mm_min_ps(lmin, _mm_load_ps(&aabb_min[idx].x));
+                    lmax = _mm_max_ps(lmax, _mm_load_ps(&aabb_max[idx].x));
+
+                    auto c = _mm_load_ps(&aabb_centroid[idx].x);
+                    lcmin = _mm_min_ps(lcmin, c);
+                    lcmax = _mm_max_ps(lcmax, c);
+                }
+
+                for (auto i = split_idx;
+                    i < request.start_index + request.num_refs;
+                    ++i) {
+                    auto idx = refs[i];
+                    rmin = _mm_min_ps(rmin, _mm_load_ps(&aabb_min[idx].x));
+                    rmax = _mm_max_ps(rmax, _mm_load_ps(&aabb_max[idx].x));
+
+                    auto c = _mm_load_ps(&aabb_centroid[idx].x);
+                    rcmin = _mm_min_ps(rcmin, c);
+                    rcmax = _mm_max_ps(rcmax, c);
+                }
+            }
+
+#ifdef _DEBUG
+#ifdef TEST
+            {
+                bbox left, right, parent;
+                _mm_store_ps(&left.pmin.x, lmin);
+                _mm_store_ps(&left.pmax.x, lmax);
+                _mm_store_ps(&right.pmin.x, rmin);
+                _mm_store_ps(&right.pmax.x, rmax);
+                _mm_store_ps(&parent.pmin.x, request.aabb_min);
+                _mm_store_ps(&parent.pmax.x, request.aabb_max);
+
+                ASSERT_TRUE(contains(parent, left));
+                ASSERT_TRUE(contains(parent, right));
+            }
+#endif
+#endif
+
+            request_left.aabb_min = lmin;
+            request_left.aabb_max = lmax;
+            request_left.centroid_aabb_min = lcmin;
+            request_left.centroid_aabb_max = lcmax;
+            request_left.start_index = request.start_index;
+            request_left.num_refs = split_idx - request.start_index;
+            request_left.level = request.level + 1;
+            auto child_base = request_left.index = free_node_idx_++;
+
+            request_right.aabb_min = rmin;
+            request_right.aabb_max = rmax;
+            request_right.centroid_aabb_min = rcmin;
+            request_right.centroid_aabb_max = rcmax;
+            request_right.start_index = split_idx;
+            request_right.num_refs = request.num_refs - request_left.num_refs;
+            request_right.level = request.level + 1;
+            request_right.index = free_node_idx_++;
+
+            NodeTraits::EncodeInternal(
+                nodes_[request.index],
+                request.aabb_min,
+                request.aabb_max,
+                child_base);
+
+            return NodeType::kInternal;
+        }
+
         void BuildImpl(
             __m128 scene_min,
             __m128 scene_max,
@@ -245,7 +521,7 @@ namespace RadeonRays {
             MetaDataArray const& metadata,
             std::size_t num_aabbs) {
 
-            std::vector<std::uint32_t> refs(num_aabbs);
+            RefArray refs(num_aabbs);
             std::iota(refs.begin(), refs.end(), 0);
 
             _MM_ALIGN16 SplitRequest requests[kStackSize];
@@ -259,7 +535,7 @@ namespace RadeonRays {
                 new (&nodes_[i]) Node;
             }
 
-            auto free_node_idx = 1;
+            free_node_idx_ = 1;
 
             requests[sptr++] = SplitRequest {
                 scene_min,
@@ -279,237 +555,33 @@ namespace RadeonRays {
             while (sptr > 0) {
                 auto request = requests[--sptr];
 
-                if (request.num_refs <= NodeTraits::kMaxLeafPrimitives) {
-                    NodeTraits::EncodeLeaf(nodes_[request.index],
-                        static_cast<std::uint32_t>(request.num_refs));
-                    for (auto i = 0u; i < request.num_refs; ++i) {
-                        auto face_data = metadata[refs[request.start_index + i]];
-                        NodeTraits::SetPrimitive(
-                            nodes_[request.index],
-                            i,
-                            face_data
-                            );
-                    }
-                    continue;
-                }
-
-                auto split_axis = aabb_max_extent_axis(
-                    request.centroid_aabb_min,
-                    request.centroid_aabb_max);
-
-                auto split_axis_extent = mm_select(
-                    _mm_sub_ps(request.centroid_aabb_max,
-                        request.centroid_aabb_min),
-                    split_axis);
-
-                auto split_value = mm_select(
-                    _mm_mul_ps(
-                        _mm_set_ps(0.5f, 0.5f, 0.5f, 0.5),
-                        _mm_add_ps(request.centroid_aabb_max,
-                            request.centroid_aabb_min)),
-                    split_axis);
-
-                auto split_idx = request.start_index;
-
-                auto lmin = m128_plus_inf;
-                auto lmax = m128_minus_inf;
-                auto rmin = m128_plus_inf;
-                auto rmax = m128_minus_inf;
-
-                auto lcmin = m128_plus_inf;
-                auto lcmax = m128_minus_inf;
-                auto rcmin = m128_plus_inf;
-                auto rcmax = m128_minus_inf;
-
-                if (split_axis_extent > 0.f) {
-                    if (request.num_refs > NodeTraits::kMinSAHPrimitives) {
-                        switch (split_axis) {
-                        case 0:
-                            split_value = FindSahSplit<0>(
-                                request,
-                                aabb_min,
-                                aabb_max,
-                                aabb_centroid,
-                                &refs[0]);
-                            break;
-                        case 1:
-                            split_value = FindSahSplit<1>(
-                                request,
-                                aabb_min,
-                                aabb_max,
-                                aabb_centroid,
-                                &refs[0]);
-                            break;
-                        case 2:
-                            split_value = FindSahSplit<2>(
-                                request,
-                                aabb_min,
-                                aabb_max,
-                                aabb_centroid,
-                                &refs[0]);
-                            break;
-                        }
-                    }
-
-                    auto first = request.start_index;
-                    auto last = request.start_index + request.num_refs;
-
-                    while (1) {
-                        while ((first != last) &&
-                            aabb_centroid[refs[first]][split_axis] < split_value) {
-                            auto idx = refs[first];
-                            lmin = _mm_min_ps(lmin, _mm_load_ps(&aabb_min[idx].x));
-                            lmax = _mm_max_ps(lmax, _mm_load_ps(&aabb_max[idx].x));
-
-                            auto c = _mm_load_ps(&aabb_centroid[idx].x);
-                            lcmin = _mm_min_ps(lcmin, c);
-                            lcmax = _mm_max_ps(lcmax, c);
-
-                            ++first;
-                        }
-
-                        if (first == last--) break;
-
-                        auto idx = refs[first];
-                        rmin = _mm_min_ps(rmin, _mm_load_ps(&aabb_min[idx].x));
-                        rmax = _mm_max_ps(rmax, _mm_load_ps(&aabb_max[idx].x));
-
-                        auto c = _mm_load_ps(&aabb_centroid[idx].x);
-                        rcmin = _mm_min_ps(rcmin, c);
-                        rcmax = _mm_max_ps(rcmax, c);
-
-                        while ((first != last) &&
-                            aabb_centroid[refs[last]][split_axis] >= split_value) {
-                            auto idx = refs[last];
-                            rmin = _mm_min_ps(rmin, _mm_load_ps(&aabb_min[idx].x));
-                            rmax = _mm_max_ps(rmax, _mm_load_ps(&aabb_max[idx].x));
-
-                            auto c = _mm_load_ps(&aabb_centroid[idx].x);
-                            rcmin = _mm_min_ps(rcmin, c);
-                            rcmax = _mm_max_ps(rcmax, c);
-
-                            --last;
-                        }
-
-                        if (first == last) break;
-
-                        idx = refs[last];
-                        lmin = _mm_min_ps(lmin, _mm_load_ps(&aabb_min[idx].x));
-                        lmax = _mm_max_ps(lmax, _mm_load_ps(&aabb_max[idx].x));
-
-                        c = _mm_load_ps(&aabb_centroid[idx].x);
-                        lcmin = _mm_min_ps(lcmin, c);
-                        lcmax = _mm_max_ps(lcmax, c);
-
-                        std::swap(refs[first++], refs[last]);
-                    }
-
-                    split_idx = first;
-#ifdef _DEBUG
-#ifdef TEST
-                    {
-                        for (auto i = request.start_index;
-                            i < request.start_index + request.num_refs;
-                            ++i) {
-                            if (i < split_idx) {
-                                ASSERT_LT(aabb_centroid[refs[i]][split_axis], split_value);
-                            }
-                            else {
-                                ASSERT_GE(aabb_centroid[refs[i]][split_axis], split_value);
-                            }
-                        }
-                    }
-#endif
-#endif
-                }
-
-                if (split_idx == request.start_index ||
-                    split_idx == request.start_index + request.num_refs) {
-                    split_idx = request.start_index + (request.num_refs >> 1);
-
-                    lmin = m128_plus_inf;
-                    lmax = m128_minus_inf;
-                    rmin = m128_plus_inf;
-                    rmax = m128_minus_inf;
-
-                    lcmin = m128_plus_inf;
-                    lcmax = m128_minus_inf;
-                    rcmin = m128_plus_inf;
-                    rcmax = m128_minus_inf;
-
-                    for (auto i = request.start_index; i < split_idx; ++i) {
-                        auto idx = refs[i];
-                        lmin = _mm_min_ps(lmin, _mm_load_ps(&aabb_min[idx].x));
-                        lmax = _mm_max_ps(lmax, _mm_load_ps(&aabb_max[idx].x));
-
-                        auto c = _mm_load_ps(&aabb_centroid[idx].x);
-                        lcmin = _mm_min_ps(lcmin, c);
-                        lcmax = _mm_max_ps(lcmax, c);
-                    }
-
-                    for (auto i = split_idx;
-                        i < request.start_index + request.num_refs;
-                        ++i) {
-                        auto idx = refs[i];
-                        rmin = _mm_min_ps(rmin, _mm_load_ps(&aabb_min[idx].x));
-                        rmax = _mm_max_ps(rmax, _mm_load_ps(&aabb_max[idx].x));
-
-                        auto c = _mm_load_ps(&aabb_centroid[idx].x);
-                        rcmin = _mm_min_ps(rcmin, c);
-                        rcmax = _mm_max_ps(rcmax, c);
-                    }
-                }
-
-#ifdef _DEBUG
-#ifdef TEST
-                {
-                    bbox left, right, parent;
-                    _mm_store_ps(&left.pmin.x, lmin);
-                    _mm_store_ps(&left.pmax.x, lmax);
-                    _mm_store_ps(&right.pmin.x, rmin);
-                    _mm_store_ps(&right.pmax.x, rmax);
-                    _mm_store_ps(&parent.pmin.x, request.aabb_min);
-                    _mm_store_ps(&parent.pmax.x, request.aabb_max);
-
-                    ASSERT_TRUE(contains(parent, left));
-                    ASSERT_TRUE(contains(parent, right));
-                }
-#endif
-#endif
+                auto& request_left{ requests[sptr++] };
 
                 if (sptr == kStackSize) {
                     throw std::runtime_error("Build stack overflow");
                 }
 
-                auto& request_left = requests[sptr++];
-                request_left.aabb_min = lmin;
-                request_left.aabb_max = lmax;
-                request_left.centroid_aabb_min = lcmin;
-                request_left.centroid_aabb_max = lcmax;
-                request_left.start_index = request.start_index;
-                request_left.num_refs = split_idx - request.start_index;
-                request_left.level = request.level + 1;
-                auto child_base = request_left.index = free_node_idx++;
+                auto& request_right{ requests[sptr++] };
+
 
                 if (sptr == kStackSize) {
                     throw std::runtime_error("Build stack overflow");
                 }
 
-                auto& request_right = requests[sptr++];
-                request_right.aabb_min = rmin;
-                request_right.aabb_max = rmax;
-                request_right.centroid_aabb_min = rcmin;
-                request_right.centroid_aabb_max = rcmax;
-                request_right.start_index = split_idx;
-                request_right.num_refs = request.num_refs - request_left.num_refs;
-                request_right.level = request.level + 1;
-                request_right.index = free_node_idx++;
-
-                NodeTraits::EncodeInternal(
-                    nodes_[request.index],
-                    request.aabb_min,
-                    request.aabb_max,
-                    child_base);
+                if (HandleRequest(
+                    request,
+                    aabb_min,
+                    aabb_max,
+                    aabb_centroid,
+                    metadata,
+                    refs,
+                    num_aabbs,
+                    request_left,
+                    request_right) == 
+                    NodeType::kLeaf) {
+                    --sptr;
+                    --sptr;
+                }
             }
         }
 
@@ -698,5 +770,6 @@ namespace RadeonRays {
 
         Node* nodes_ = nullptr;
         std::size_t num_nodes_ = 0;
+        std::uint32_t free_node_idx_ = 0u;
     };
 }

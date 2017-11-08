@@ -35,17 +35,17 @@ THE SOFTWARE.
 
 struct BvhNode {
     RadeonRays::bbox bounds;
-    std::vector<std::pair<RadeonRays::Mesh const*, std::size_t>> refs;
+    RadeonRays::Mesh const* mesh;
+    std::uint32_t face_index;
     std::uint32_t child_base = 0xffffffffu;
 };
 
 struct BvhNodeTraits {
-    static std::uint32_t constexpr kMaxLeafPrimitives = 4u;
+    static std::uint32_t constexpr kMaxLeafPrimitives = 1u;
     static std::uint32_t constexpr kMinSAHPrimitives = 16u;
     static std::uint32_t constexpr kTraversalCost = 10u;
 
     static void EncodeLeaf(BvhNode& node, std::uint32_t num_refs) {
-        node.refs.resize(num_refs);
     }
 
     static void EncodeInternal(
@@ -62,7 +62,8 @@ struct BvhNodeTraits {
         BvhNode& node,
         std::uint32_t index,
         std::pair<RadeonRays::Mesh const*, std::size_t> ref) {
-        node.refs[index] = ref;
+        node.mesh = ref.first;
+        node.face_index = (std::uint32_t)ref.second;
     }
 
     static bool IsInternal(BvhNode& node) {
@@ -162,15 +163,12 @@ TEST_F(BvhTest, Invariant) {
                     ASSERT_TRUE(RadeonRays::contains(node->bounds, child->bounds));
                 }
                 else {
-                    for (auto& ref : child->refs) {
-                        auto mesh = ref.first;
-                        auto face_index = ref.second;
+                    auto mesh = child->mesh;
+                    auto face_index = child->face_index;
+                    auto vertices = mesh->GetFaceVertexData(face_index);
 
-                        auto vertices = mesh->GetFaceVertexData(face_index);
-
-                        for (auto& v : vertices) {
-                            ASSERT_TRUE(RadeonRays::contains(node->bounds, v));
-                        }
+                    for (auto& v : vertices) {
+                        ASSERT_TRUE(RadeonRays::contains(node->bounds, v));
                     }
                 }
             }
@@ -214,15 +212,12 @@ TEST_F(BvhTest, CrytekSponza) {
                     ASSERT_TRUE(RadeonRays::contains(node->bounds, child->bounds));
                 }
                 else {
-                    for (auto& ref : child->refs) {
-                        auto mesh = ref.first;
-                        auto face_index = ref.second;
+                    auto mesh = child->mesh;
+                    auto face_index = child->face_index;
+                    auto vertices = mesh->GetFaceVertexData(face_index);
 
-                        auto vertices = mesh->GetFaceVertexData(face_index);
-
-                        for (auto& v : vertices) {
-                            ASSERT_TRUE(RadeonRays::contains(node->bounds, v));
-                        }
+                    for (auto& v : vertices) {
+                        ASSERT_TRUE(RadeonRays::contains(node->bounds, v));
                     }
                 }
             }
@@ -266,15 +261,12 @@ TEST_F(BvhTest, Kitchen) {
                     ASSERT_TRUE(RadeonRays::contains(node->bounds, child->bounds));
                 }
                 else {
-                    for (auto& ref : child->refs) {
-                        auto mesh = ref.first;
-                        auto face_index = ref.second;
+                    auto mesh = child->mesh;
+                    auto face_index = child->face_index;
+                    auto vertices = mesh->GetFaceVertexData(face_index);
 
-                        auto vertices = mesh->GetFaceVertexData(face_index);
-
-                        for (auto& v : vertices) {
-                            ASSERT_TRUE(RadeonRays::contains(node->bounds, v));
-                        }
+                    for (auto& v : vertices) {
+                        ASSERT_TRUE(RadeonRays::contains(node->bounds, v));
                     }
                 }
             }
