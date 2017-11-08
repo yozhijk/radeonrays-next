@@ -30,15 +30,12 @@ THE SOFTWARE.
 #include "tiny_obj_loader.h"
 
 #include <vector>
+#include <stack>
 
 struct BvhNode {
-    RadeonRays::float3 pmin;
-    RadeonRays::float3 pmax;
-    std::uint32_t refs[4];
-    std::uint32_t count;
+    RadeonRays::bbox bounds;
+    std::vector<std::pair<RadeonRays::Mesh const*, std::size_t>> refs;
     std::uint32_t child_base = 0xffffffffu;
-    std::uint32_t padding0;
-    std::uint32_t padding1;
 };
 
 struct BvhNodeTraits {
@@ -47,7 +44,7 @@ struct BvhNodeTraits {
     static std::uint32_t constexpr kTraversalCost = 10u;
 
     static void EncodeLeaf(BvhNode& node, std::uint32_t num_refs) {
-        node.count = num_refs;
+        node.refs.resize(num_refs);
     }
 
     static void EncodeInternal(
@@ -55,13 +52,24 @@ struct BvhNodeTraits {
         __m128 aabb_min,
         __m128 aabb_max,
         std::uint32_t child) {
-        _mm_store_ps(&node.pmin.x, aabb_min);
-        _mm_store_ps(&node.pmax.x, aabb_max);
+        _mm_store_ps(&node.bounds.pmin.x, aabb_min);
+        _mm_store_ps(&node.bounds.pmax.x, aabb_max);
         node.child_base = child;
     }
 
-    static void SetPrimitive(BvhNode& node, std::uint32_t index, std::uint32_t ref) {
+    static void SetPrimitive(
+        BvhNode& node,
+        std::uint32_t index,
+        std::pair<RadeonRays::Mesh const*, std::size_t> ref) {
         node.refs[index] = ref;
+    }
+
+    static bool IsInternal(BvhNode& node) {
+        return node.child_base != 0xffffffffu;
+    }
+
+    static std::uint32_t GetChildIndex(BvhNode& node, std::uint8_t idx) {
+        return IsInternal(node) ? (node.child_base + idx) : 0xffffffffu;
     }
 };
 
@@ -109,7 +117,41 @@ public:
 
 
 TEST_F(BvhTest, BuildBVH) {
-    bvh.Build(world.cbegin(), world.cend());
+    ASSERT_NO_THROW(bvh.Build(world.cbegin(), world.cend()));
+}
+
+TEST_F(BvhTest, BVHInvariant) {
+    ASSERT_NO_THROW(bvh.Build(world.cbegin(), world.cend()));
+
+    std::stack<std::uint32_t> stack;
+    stack.push(0u);
+
+    while (!stack.empty()) {
+        auto node = bvh.GetNode(stack.top());
+        stack.pop();
+
+        if (BvhNodeTraits::IsInternal(*node)) {
+            for (auto i = 0u; i < 2u; ++i) {
+                auto child = bvh.GetNode(BvhNodeTraits::GetChildIndex(*node, i));
+
+                if (BvhNodeTraits::IsInternal(*child)) {
+                    ASSERT_TRUE(RadeonRays::contains(node->bounds, child->bounds));
+                }
+                else {
+                    for (auto& ref : child->refs) {
+                        auto mesh = ref.first;
+                        auto face_index = ref.second;
+
+                        auto vertices = mesh->GetFaceVertexData(face_index);
+
+                        for (auto& v : vertices) {
+                            ASSERT_TRUE(RadeonRays::contains(node->bounds, v));
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 

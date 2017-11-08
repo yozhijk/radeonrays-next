@@ -111,6 +111,7 @@ namespace RadeonRays {
         typename NodeTraits,
         typename Allocator = aligned_allocator>
     class Bvh {
+        using MetaDataArray = std::vector<std::pair<Mesh const*, std::size_t>>;
 
     public:
         template<typename Iter> void Build(Iter begin, Iter end) {
@@ -146,6 +147,8 @@ namespace RadeonRays {
                     Allocator::allocate(sizeof(float3) * num_items, 16u)),
                     deleter);
 
+            MetaDataArray metadata(num_items);
+
             auto constexpr inf = std::numeric_limits<float>::infinity();
 
             auto scene_min = _mm_set_ps(inf, inf, inf, inf);
@@ -180,6 +183,8 @@ namespace RadeonRays {
                     _mm_store_ps(&aabb_min[current_face].x, pmin);
                     _mm_store_ps(&aabb_max[current_face].x, pmax);
                     _mm_store_ps(&aabb_centroid[current_face].x, centroid);
+
+                    metadata[current_face] = std::make_pair(mesh, face_index);
                 }
             }
 
@@ -191,12 +196,29 @@ namespace RadeonRays {
                 aabb_min.get(),
                 aabb_max.get(),
                 aabb_centroid.get(),
+                metadata,
                 num_items);
         }
 
         void Clear() {
+            for (auto i = 0u; i < num_nodes_; ++i) {
+                nodes_[i].~Node();
+            }
             delete nodes_;
             nodes_ = nullptr;
+            num_nodes_ = 0;
+        }
+
+        auto root() const {
+            return nodes_[0];
+        }
+
+        auto num_nodes() const {
+            return num_nodes_;
+        }
+
+        auto GetNode(std::size_t idx) const {
+            return nodes_ + idx;
         }
 
     private:
@@ -220,6 +242,7 @@ namespace RadeonRays {
             float3 const* aabb_min,
             float3 const* aabb_max,
             float3 const* aabb_centroid,
+            MetaDataArray const& metadata,
             std::size_t num_aabbs) {
 
             std::vector<std::uint32_t> refs(num_aabbs);
@@ -228,9 +251,14 @@ namespace RadeonRays {
             _MM_ALIGN16 SplitRequest requests[kStackSize];
             auto sptr = 0u;
 
-            auto max_nodes = num_aabbs * 2 - 1;
+            num_nodes_ = num_aabbs * 2 - 1;
             nodes_ = reinterpret_cast<Node*>(
-                Allocator::allocate(sizeof(Node) * max_nodes, 16u));
+                Allocator::allocate(sizeof(Node) * num_nodes_, 16u));
+
+            for (auto i = 0u; i < num_nodes_; ++i) {
+                new (&nodes_[i]) Node;
+            }
+
             auto free_node_idx = 1;
 
             requests[sptr++] = SplitRequest {
@@ -255,10 +283,12 @@ namespace RadeonRays {
                     NodeTraits::EncodeLeaf(nodes_[request.index],
                         static_cast<std::uint32_t>(request.num_refs));
                     for (auto i = 0u; i < request.num_refs; ++i) {
+                        auto face_data = metadata[refs[request.start_index + i]];
                         NodeTraits::SetPrimitive(
                             nodes_[request.index],
                             i,
-                            refs[request.start_index + i]);
+                            face_data
+                            );
                     }
                     continue;
                 }
@@ -659,5 +689,6 @@ namespace RadeonRays {
         }
 
         Node* nodes_ = nullptr;
+        std::size_t num_nodes_ = 0;
     };
 }
