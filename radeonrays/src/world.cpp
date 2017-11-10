@@ -37,7 +37,7 @@ namespace RadeonRays {
             set_changed(true);
         }
     }
-    
+
     void World::DetachAll() {
         shapes_.clear();
         set_changed(true);

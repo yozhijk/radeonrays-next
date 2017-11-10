@@ -34,15 +34,17 @@ THE SOFTWARE.
 #include <chrono>
 
 struct BvhNode {
+    static auto constexpr kInvalidIndex = 0xffffffffu;
+
     RadeonRays::bbox bounds;
     RadeonRays::Mesh const* mesh;
-    std::uint32_t face_index = 0xffffffffu;
-    std::uint32_t child[2]{ 0xffffffffu, 0xffffffffu };
+    std::uint32_t face_index = kInvalidIndex;
+    std::uint32_t child[2]{ kInvalidIndex, kInvalidIndex };
 };
 
 struct BvhNodeTraits {
     static std::uint32_t constexpr kMaxLeafPrimitives = 1u;
-    static std::uint32_t constexpr kMinSAHPrimitives = 16u;
+    static std::uint32_t constexpr kMinSAHPrimitives = 64u;
     static std::uint32_t constexpr kTraversalCost = 10u;
 
     static void EncodeLeaf(BvhNode& node, std::uint32_t num_refs) {
@@ -123,7 +125,6 @@ public:
     }
 
     void SetUp() override {
-
     }
 
     void TearDown() override {
