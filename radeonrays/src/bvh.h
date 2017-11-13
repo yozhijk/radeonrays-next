@@ -423,10 +423,10 @@ namespace RadeonRays {
                         i < request.start_index + request.num_refs;
                         ++i) {
                         if (i < split_idx) {
-                            ASSERT_LT(aabb_centroid[refs[i]][split_axis], split_value);
+                            assert(aabb_centroid[refs[i]][split_axis] <  split_value);
                         }
                         else {
-                            ASSERT_GE(aabb_centroid[refs[i]][split_axis], split_value);
+                            assert(aabb_centroid[refs[i]][split_axis] >= split_value);
                         }
                     }
                 }
@@ -482,8 +482,8 @@ namespace RadeonRays {
                 _mm_store_ps(&parent.pmin.x, request.aabb_min);
                 _mm_store_ps(&parent.pmax.x, request.aabb_max);
 
-                ASSERT_TRUE(contains(parent, left));
-                ASSERT_TRUE(contains(parent, right));
+                assert(contains(parent, left));
+                assert(contains(parent, right));
             }
 #endif
 #endif
