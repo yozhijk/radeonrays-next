@@ -1,6 +1,7 @@
 #include <radeonrays.h>
 #include <vulkan/vulkan.hpp>
 #include "world.h"
+#include "mesh.h"
 
 #include <fstream>
 
@@ -162,7 +163,7 @@ rr_status rrIntersect(rr_instance inst, VkBuffer ray_buffer, VkBuffer hit_buffer
     vk::DescriptorBufferInfo desc_buffer_info;
     desc_buffer_info.setBuffer(ray_buffer);
     desc_buffer_info.setOffset(0);
-    desc_buffer_info.setRange(vk::DeviceSize{ num_rays * sizeof(int) });
+    desc_buffer_info.setRange(vk::DeviceSize{ num_rays * sizeof(Ray) });
 
     vk::WriteDescriptorSet desc_writes;
     desc_writes.setDescriptorCount(1)
@@ -198,7 +199,7 @@ rr_status rrIntersect(rr_instance inst, VkBuffer ray_buffer, VkBuffer hit_buffer
     vk::BufferMemoryBarrier memory_barrier;
     memory_barrier.setBuffer(ray_buffer)
         .setOffset(0)
-        .setSize(num_rays * sizeof(int))
+        .setSize(num_rays * sizeof(Ray))
         .setSrcAccessMask(vk::AccessFlagBits::eTransferWrite)
         .setDstAccessMask(vk::AccessFlagBits::eShaderRead);
 
@@ -238,4 +239,91 @@ rr_status rrShutdownInstance(rr_instance instance) {
     } else {
         return RR_ERROR_INVALID_VALUE;
     }
+}
+
+rr_status rrCreateTriangleMesh(
+    rr_instance* inst,
+    float const* vertices,
+    std::uint32_t num_vertices,
+    std::uint32_t vertex_stride,
+    std::uint32_t const* indices,
+    std::uint32_t index_stride,
+    std::uint32_t num_faces,
+    std::uint32_t id,
+    rr_shape* out_shape
+) {
+    if (!inst || !out_shape || !indices || !out_shape) {
+        return RR_ERROR_INVALID_VALUE;
+    }
+
+    auto instance = reinterpret_cast<Instance*>(inst);
+    auto mesh = new RadeonRays::Mesh(
+        vertices,
+        num_vertices,
+        vertex_stride,
+        indices,
+        index_stride,
+        num_faces);
+
+    mesh->SetId(id);
+
+    *out_shape = reinterpret_cast<rr_shape>(mesh);
+
+    return RR_SUCCESS;
+}
+
+rr_status rrAttachShape(rr_instance* inst, rr_shape s) {
+    if (!inst || !s) {
+        return RR_ERROR_INVALID_VALUE;
+    }
+
+    auto instance = reinterpret_cast<Instance*>(inst);
+    auto shape = reinterpret_cast<Shape*>(s);
+    instance->world_.AttachShape(shape);
+
+    return RR_SUCCESS;
+}
+
+RR_API rr_status rrDetachShape(rr_instance* inst, rr_shape s) {
+    if (!inst || !s) {
+        return RR_ERROR_INVALID_VALUE;
+    }
+
+    auto instance = reinterpret_cast<Instance*>(inst);
+    auto shape = reinterpret_cast<Shape*>(s);
+    instance->world_.DetachShape(shape);
+
+    return RR_SUCCESS;
+}
+
+RR_API rr_status rrDetachAllShapes(rr_instance* inst) {
+    if (!inst) {
+        return RR_ERROR_INVALID_VALUE;
+    }
+
+    auto instance = reinterpret_cast<Instance*>(inst);
+    instance->world_.DetachAll();
+
+    return RR_SUCCESS;
+}
+
+RR_API rr_status rrCommit(rr_instance* inst) {
+    if (!inst) {
+        return RR_ERROR_INVALID_VALUE;
+    }
+
+    return RR_SUCCESS;
+}
+
+RR_API rr_status rrDeleteShape(rr_instance* inst, rr_shape s) {
+    if (!inst || !s) {
+        return RR_ERROR_INVALID_VALUE;
+    }
+
+    auto instance = reinterpret_cast<Instance*>(inst);
+    auto shape = reinterpret_cast<Shape*>(s);
+
+    delete shape;
+
+    return RR_SUCCESS;
 }
