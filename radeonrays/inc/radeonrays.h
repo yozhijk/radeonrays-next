@@ -25,6 +25,7 @@
 #define RR_SUCCESS 0
 #define RR_ERROR_INVALID_VALUE -1
 #define RR_ERROR_NOT_IMPLEMENTED -2
+#define RR_INVALID_ID 0xffffffffu
 
 typedef int rr_status;
 typedef int rr_init_flags;
@@ -36,6 +37,12 @@ struct Ray {
     float time;
     float origin[3];
     float max_t;
+};
+
+struct Hit {
+    uint32_t shape_id;
+    uint32_t prim_id;
+    float uv[2];
 };
 
 #ifdef __cplusplus

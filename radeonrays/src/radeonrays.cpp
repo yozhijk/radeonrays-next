@@ -5,6 +5,18 @@
 
 #include <fstream>
 
+
+struct BVHNode {
+    float aabb_left_min_or_v0[3];
+    uint32_t addr_left;
+    float aabb_left_max_or_v1[3];
+    uint32_t mesh_id;
+    float aabb_right_min_or_v2[3];
+    uint32_t addr_right;
+    float aabb_right_max;
+    uint32_t prim_id;
+};
+
 using namespace RadeonRays;
 
 struct Instance {
@@ -155,7 +167,7 @@ rr_status rrInitInstance(VkDevice device, VkCommandPool command_pool, rr_instanc
     return RR_SUCCESS;
 }
 
-rr_status rrIntersect(rr_instance inst, VkBuffer ray_buffer, VkBuffer hit_buffer, unsigned int num_rays, VkCommandBuffer* out_command_buffer) {
+rr_status rrIntersect(rr_instance inst, VkBuffer ray_buffer, VkBuffer hit_buffer, uint32_t num_rays, VkCommandBuffer* out_command_buffer) {
     // Update descriptor sets
     auto instance = reinterpret_cast<Instance*>(inst);
     auto& dev = instance->device_;
