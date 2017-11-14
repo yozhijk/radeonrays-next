@@ -229,7 +229,6 @@ TEST_F(LibTest, InitBuffers) {
 
     std::vector<Ray> data(kBufferElements);
     std::vector<Ray> result(kBufferElements);
-    //std::iota(data.begin(), data.end(), 0);
 
     auto staging_buffer = m_staging_mgr->CreateBuffer(
         kBufferElements * sizeof(Ray),

@@ -56,7 +56,7 @@ extern "C" {
         rr_instance instance,
         VkBuffer ray_buffer,
         VkBuffer hit_buffer,
-        unsigned int num_rays,
+        uint32_t num_rays,
         VkCommandBuffer* out_command_buffer
     );
 
