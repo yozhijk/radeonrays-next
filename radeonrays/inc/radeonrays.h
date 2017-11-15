@@ -25,6 +25,9 @@
 #define RR_SUCCESS 0
 #define RR_ERROR_INVALID_VALUE -1
 #define RR_ERROR_NOT_IMPLEMENTED -2
+#define RR_ERROR_OUT_OF_SYSTEM_MEMORY -3
+#define RR_ERROR_OUT_OF_VIDEO_MEMORY -4
+
 #define RR_INVALID_ID 0xffffffffu
 
 typedef int rr_status;
@@ -50,14 +53,15 @@ extern "C" {
 #endif
     RR_API rr_status rrInitInstance(
         VkDevice device,
+        VkPhysicalDevice physical_device,
         VkCommandPool command_pool,
         rr_instance* out_instance);
 
-    RR_API rr_status rrAttachShape(rr_instance* instance, rr_shape shape);
-    RR_API rr_status rrDetachShape(rr_instance* instance, rr_shape shape);
-    RR_API rr_status rrDetachAllShapes(rr_instance* instance);
-    RR_API rr_status rrCommit(rr_instance* instance);
-    RR_API rr_status rrDeleteShape(rr_instance* instance, rr_shape shape);
+    RR_API rr_status rrAttachShape(rr_instance instance, rr_shape shape);
+    RR_API rr_status rrDetachShape(rr_instance instance, rr_shape shape);
+    RR_API rr_status rrDetachAllShapes(rr_instance instance);
+    RR_API rr_status rrCommit(rr_instance instance, VkCommandBuffer* out_command_buffer);
+    RR_API rr_status rrDeleteShape(rr_instance instance, rr_shape shape);
 
     RR_API rr_status rrIntersect(
         rr_instance instance,
@@ -68,7 +72,7 @@ extern "C" {
     );
 
     RR_API rr_status rrCreateTriangleMesh(
-        rr_instance* instance,
+        rr_instance instance,
         float const* vertices,
         uint32_t num_vertices,
         uint32_t vertex_stride,

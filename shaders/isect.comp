@@ -1,11 +1,18 @@
 #version 450
 #define INVALID_ADDR 0xffffffffu
+#define INTERNAL_NODE(node)((node).addr_left!=INVALID_ADDR)
 
 struct Ray {
 	vec3 direction;
 	float time;
 	vec3 origin;
 	float max_t;
+};
+
+struct Hit {
+    uint shape_id;
+    uint prim_id;
+    float uv[2];
 };
 
 struct BVHNode {
@@ -23,9 +30,14 @@ layout(set = 0, binding = 0) buffer Rays {
 	Ray rays[];
 };
 
-layout(set = 0, binding = 1) buffer BVH {
+layout(set = 0, binding = 1) buffer Hits {
+	Hit hits[];
+};
+
+layout(set = 0, binding = 2) buffer BVH {
 	BVHNode bvh[];
 };
+
 
 layout (push_constant) uniform PushConstants {
 	uint N;
@@ -33,17 +45,131 @@ layout (push_constant) uniform PushConstants {
 
 layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
+
+float mymin3(float a, float b, float c) {
+	return min(c, min(a,b));
+}
+
+float mymax3(float a, float b, float c) {
+	return max(c, max(a,b));
+}
+
+float fast_intersect_triangle(Ray r, vec3 v1, vec3 v2, vec3 v3, float t_max) {
+    vec3 e1 = v2 - v1;
+    vec3 e2 = v3 - v1;
+    vec3 s1 = cross(r.direction, e2);
+	float invd = 1.0 / dot(s1, e1);
+    vec3 d = r.origin - v1;
+    float b1 = dot(d, s1) * invd;
+    vec3 s2 = cross(d, e1);
+    float b2 = dot(r.direction, s2) * invd;
+    float temp = dot(e2, s2) * invd;
+
+    if (b1 < 0.0 || b1 > 1.0 || 
+    	b2 < 0.0 || b1 + b2 > 1.0 || 
+    	temp < 0.0 || temp > t_max) {
+        return t_max;
+    } else {
+        return temp;
+    }
+}
+
+vec2 fast_intersect_aabb(
+	vec3 pmin, vec3 pmax,
+	vec3 invdir, vec3 oxinvdir,
+	float t_max) {
+    vec3 f = fma(pmax, invdir, oxinvdir);
+    vec3 n = fma(pmin, invdir, oxinvdir);
+    vec3 tmax = max(f, n);
+    vec3 tmin = min(f, n);
+    float t1 = min(mymin3(tmax.x, tmax.y, tmax.z), t_max);
+    float t0 = max(mymax3(tmin.x, tmin.y, tmin.z), 0.0);
+    return vec2(t0, t1);
+}
+
+vec3 safe_invdir(vec3 d) {
+    float dirx = d.x;
+    float diry = d.y;
+    float dirz = d.z;
+    float ooeps = 1e-8;
+    vec3 invdir;
+    invdir.x = 1.0 / (abs(dirx) > ooeps ? dirx : ooeps * sign(dirx));
+    invdir.y = 1.0 / (abs(diry) > ooeps ? diry : ooeps * sign(diry));
+    invdir.z = 1.0 / (abs(dirz) > ooeps ? dirz : ooeps * sign(dirz));
+    return invdir;
+}
+
 void main() {
 	uint index = gl_GlobalInvocationID.x;
 	
 	if (index >= N) 
 		return;	
 
-	Ray myRay;
-	myRay.direction = vec3(1.0, 1.0, 1.0);
-	myRay.origin = vec3(2.0, 2.0, 2.0);
-	myRay.time = float(index);
-	myRay.max_t = 1000.0;
+	Ray myRay = rays[index];
+	vec3 invDir = safe_invdir(myRay.direction);
 
-	rays[index] = myRay;
+	float closest_t = myRay.max_t;
+	uint closest_addr = INVALID_ADDR;
+
+	uint stack[32];
+	uint sptr = 0;
+
+	stack[sptr++] = INVALID_ADDR;
+	uint addr = 0;
+
+	while (addr != INVALID_ADDR) {
+		BVHNode node = bvh[addr];
+
+		if (INTERNAL_NODE(node)) {
+			vec2 s0 = fast_intersect_aabb(
+				node.aabb_left_min_or_v0,
+				node.aabb_left_max_or_v1,
+				myRay.direction, invDir, closest_t);
+            vec2 s1 = fast_intersect_aabb(
+				node.aabb_right_min_or_v2,
+				node.aabb_right_max,
+				myRay.direction, invDir, closest_t);
+
+        	bool traverse_c0 = (s0.x <= s0.y);
+        	bool traverse_c1 = (s1.x <= s1.y);
+        	bool c1first = traverse_c1 && (s0.x > s1.x);
+
+        	if (traverse_c0 || traverse_c1) {
+                uint deferred = INVALID_ADDR;
+
+                if (c1first || !traverse_c0) {
+                    addr = node.addr_right;
+                    deferred = node.addr_left;
+                } else {
+                    addr = node.addr_left;
+                    deferred = node.addr_right;
+                }
+
+                if (traverse_c0 && traverse_c1) {
+                    stack[sptr++] = deferred;
+                }
+
+                continue;
+            }
+
+        } else {
+        	float t = fast_intersect_triangle(
+        		myRay,
+        		node.aabb_left_min_or_v0,
+        		node.aabb_left_max_or_v1,
+        		node.aabb_right_min_or_v2,
+        		closest_t);
+
+        	if (t < closest_t) {
+        		closest_t = t;
+        		closest_addr = addr;
+        	}
+		}
+
+		addr = stack[--sptr];
+	}
+
+
+
+	hits[index].prim_id = index;
 }

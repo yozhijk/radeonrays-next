@@ -32,88 +32,19 @@ THE SOFTWARE.
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
-
+#include <stack>
 #include <xmmintrin.h>
 #include <smmintrin.h>
 
 #include "mesh.h"
+#include "utils.h"
+#include "bvh_utils.h"
 
 #define PARALLEL_BUILD
 
 namespace RadeonRays {
 
-    struct aligned_allocator {
-#ifdef WIN32
-        static void* allocate(std::size_t size, std::size_t alignement) {
-            return _aligned_malloc(size, alignement);
-        }
-
-        static void deallocate(void* ptr) {
-            return _aligned_free(ptr);
-        }
-#else
-        static void* allocate(std::size_t size, std::size_t) {
-            return malloc(size);
-        }
-
-        static void deallocate(void* ptr) {
-            return free(ptr);
-        }
-#endif
-    };
-
-#ifdef __GNUC__
-#define clz(x) __builtin_clz(x)
-#define ctz(x) __builtin_ctz(x)
-#else
-    inline std::uint32_t popcnt(std::uint32_t x) {
-        x -= ((x >> 1) & 0x55555555);
-        x = (((x >> 2) & 0x33333333) + (x & 0x33333333));
-        x = (((x >> 4) + x) & 0x0f0f0f0f);
-        x += (x >> 8);
-        x += (x >> 16);
-        return x & 0x0000003f;
-    }
-    inline std::uint32_t clz(std::uint32_t x) {
-        x |= (x >> 1);
-        x |= (x >> 2);
-        x |= (x >> 4);
-        x |= (x >> 8);
-        x |= (x >> 16);
-        return 32 - popcnt(x);
-    }
-    inline std::uint32_t ctz(std::uint32_t x) {
-        return popcnt((std::uint32_t)(x & -(int)x) - 1);
-    }
-#endif
-
-    inline auto aabb_surface_area(__m128 pmin, __m128 pmax) {
-        auto ext = _mm_sub_ps(pmax, pmin);
-        auto xxy = _mm_shuffle_ps(ext, ext, _MM_SHUFFLE(3, 1, 0, 0));
-        auto yzz = _mm_shuffle_ps(ext, ext, _MM_SHUFFLE(3, 2, 2, 1));
-        return _mm_mul_ps(_mm_dp_ps(xxy, yzz, 0xff), _mm_set_ps(2.f, 2.f, 2.f, 2.f));
-    }
-
-    inline auto aabb_extents(__m128 pmin, __m128 pmax) {
-        return _mm_sub_ps(pmax, pmin);
-    }
-
-    inline auto aabb_max_extent_axis(__m128 pmin, __m128 pmax) {
-        auto xyz = _mm_sub_ps(pmax, pmin);
-        auto yzx = _mm_shuffle_ps(xyz, xyz, _MM_SHUFFLE(3, 0, 2, 1));
-        auto m0 = _mm_max_ps(xyz, yzx);
-        auto m1 = _mm_shuffle_ps(m0, m0, _MM_SHUFFLE(3, 0, 2, 1));
-        auto m2 = _mm_max_ps(m0, m1);
-        auto cmp = _mm_cmpeq_ps(xyz, m2);
-        return ctz(_mm_movemask_ps(cmp));
-    }
-
-    inline auto mm_select(__m128 v, std::uint32_t index) {
-        _MM_ALIGN16 float temp[4];
-        _mm_store_ps(temp, v);
-        return temp[index];
-    }
-
+    // BVH builder class
     template <
         typename Node,
         typename NodeTraits,
@@ -504,7 +435,7 @@ namespace RadeonRays {
             request_right.start_index = split_idx;
             request_right.num_refs = request.num_refs - request_left.num_refs;
             request_right.level = request.level + 1;
-            request_right.index = static_cast<std::uint32_t>(request.index + request_left.num_refs * 2 - 1);
+            request_right.index = static_cast<std::uint32_t>(request.index + request_left.num_refs * 2);
 
 
             NodeTraits::EncodeInternal(
@@ -543,7 +474,6 @@ namespace RadeonRays {
             auto m128_plus_inf = _mm_set_ps(inf, inf, inf, inf);
             auto m128_minus_inf = _mm_set_ps(-inf, -inf, -inf, -inf);
 
-//#define PARALLEL_BUILD
 #ifndef PARALLEL_BUILD
             _MM_ALIGN16 SplitRequest requests[kStackSize];
             auto sptr = 0u;
@@ -848,10 +778,8 @@ namespace RadeonRays {
                 auto rsa = mm_select(
                     aabb_surface_area(right_min[i], right_max[i]), 0);
 
-                // Compute SAH
                 auto s = static_cast<float>(NodeTraits::kTraversalCost) + (lc * lsa + rc * rsa) * area_inv;
 
-                // Check if it is better than what we found so far
                 if (s < sah)
                 {
                     split_idx = i;

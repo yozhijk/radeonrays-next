@@ -101,15 +101,20 @@ public:
     }
 
     void Release() {
-        device_.freeMemory(memory_);
+        if (memory_) {
+            device_.freeMemory(memory_);
+            memory_ = nullptr;
+        }
     }
 
-    vk::Device device_;
-    vk::PhysicalDevice physical_device_;
-    vk::DeviceMemory memory_;
-    std::size_t pool_size_;
+    vk::Device device_ = nullptr;
+    vk::PhysicalDevice physical_device_ = nullptr;
+    vk::DeviceMemory memory_ = nullptr;
+    std::size_t pool_size_ = 0;
     std::size_t next_free_index_ = 0;
 };
+
+#define CORNELL_BOX "../../data/cornellbox.obj"
 
 class LibTest : public ::testing::Test {
 public:
@@ -165,7 +170,7 @@ public:
         command_pool_ = device_.createCommandPool(cmd_pool_info);
 
 
-        auto status = rrInitInstance(device_, command_pool_, &rr_instance_);
+        auto status = rrInitInstance(device_, physical_device_, command_pool_, &rr_instance_);
         ASSERT_EQ(status, RR_SUCCESS);
 
         m_staging_mgr = std::make_unique<VulkanMemoryManager>(
@@ -179,9 +184,16 @@ public:
             physical_device_,
             vk::MemoryPropertyFlagBits::eDeviceLocal,
             512 * 1024 * 1024);
+
+        LoadScene(CORNELL_BOX);
     }
 
     void TearDown() override {
+
+        for (auto& m : meshes_) {
+            rrDeleteShape(rr_instance_, m);
+        }
+
         auto status = rrShutdownInstance(rr_instance_);
         ASSERT_EQ(status, RR_SUCCESS);
 
@@ -193,6 +205,44 @@ public:
         instance_.destroy();
     }
 
+    void LoadScene(std::string const& file) {
+        std::string err;
+        auto ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &err, file.c_str());
+        ASSERT_TRUE(ret);
+        ASSERT_GT(shapes.size(), 0u);
+
+        vertices.resize(attrib.vertices.size() / 3);
+        for (auto i = 0u; i < attrib.vertices.size() / 3; ++i) {
+            vertices[i].x = attrib.vertices[3 * i];
+            vertices[i].y = attrib.vertices[3 * i + 1];
+            vertices[i].z = attrib.vertices[3 * i + 2];
+            vertices[i].w = 1.f;
+        }
+
+        attrib.vertices.clear();
+        std::uint32_t id = 1u;
+        for (auto& shape : shapes) {
+
+            rr_shape mesh = nullptr;
+            auto status = rrCreateTriangleMesh(
+                rr_instance_, 
+                &vertices[0].x,
+                (std::uint32_t)vertices.size(),
+                sizeof(RadeonRays::float3),
+                (std::uint32_t*)&shape.mesh.indices[0].vertex_index,
+                (std::uint32_t)sizeof(tinyobj::index_t),
+                (std::uint32_t)(shape.mesh.indices.size() / 3),
+                id++,
+                &mesh);
+
+            ASSERT_EQ(status, RR_SUCCESS);
+            meshes_.push_back(mesh);
+
+            status = rrAttachShape(rr_instance_, mesh);
+            ASSERT_EQ(status, RR_SUCCESS);
+        }
+    }
+
     rr_instance rr_instance_;
     vk::Instance instance_;
     vk::PhysicalDevice physical_device_;
@@ -200,172 +250,243 @@ public:
     vk::CommandPool command_pool_;
     vk::Queue queue_;
 
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+    std::vector<RadeonRays::float3> vertices;
+    std::vector<rr_shape> meshes_;
+    tinyobj::attrib_t attrib;
+
     std::unique_ptr<VulkanMemoryManager> m_staging_mgr;
     std::unique_ptr<VulkanMemoryManager> m_local_mgr;
 };
 
 TEST_F(LibTest, Init) {
-    auto staging_buffer = m_staging_mgr->CreateBuffer(
+    auto rays_staging = m_staging_mgr->CreateBuffer(
         128 * 1024 * 1024,
         vk::BufferUsageFlagBits::eTransferDst |
         vk::BufferUsageFlagBits::eTransferSrc);
 
-    auto device_buffer = m_local_mgr->CreateBuffer(
+    auto rays_local = m_local_mgr->CreateBuffer(
         128 * 1024 * 1024,
         vk::BufferUsageFlagBits::eTransferDst |
         vk::BufferUsageFlagBits::eTransferSrc |
         vk::BufferUsageFlagBits::eStorageBuffer);
 
-    device_.destroyBuffer(staging_buffer.buffer);
-    device_.destroyBuffer(device_buffer.buffer);
+    device_.destroyBuffer(rays_staging.buffer);
+    device_.destroyBuffer(rays_local.buffer);
 }
 
 TEST_F(LibTest, InitBuffers) {
-
     auto constexpr kBufferElements = 512;
 
-    Ray ray;
-    ray.direction[0] = 0;
-
     std::vector<Ray> data(kBufferElements);
-    std::vector<Ray> result(kBufferElements);
+    std::vector<Hit> result(kBufferElements);
 
-    auto staging_buffer = m_staging_mgr->CreateBuffer(
+    // Allocate rays and hits buffer
+    auto rays_staging = m_staging_mgr->CreateBuffer(
         kBufferElements * sizeof(Ray),
-        vk::BufferUsageFlagBits::eTransferDst |
         vk::BufferUsageFlagBits::eTransferSrc);
-
-    auto device_buffer = m_local_mgr->CreateBuffer(
+    auto hits_staging = m_staging_mgr->CreateBuffer(
+        kBufferElements * sizeof(Hit),
+        vk::BufferUsageFlagBits::eTransferDst);
+    auto rays_local = m_local_mgr->CreateBuffer(
         kBufferElements * sizeof(Ray),
         vk::BufferUsageFlagBits::eTransferDst |
+        vk::BufferUsageFlagBits::eStorageBuffer);
+    auto hits_local = m_local_mgr->CreateBuffer(
+        kBufferElements * sizeof(Hit),
         vk::BufferUsageFlagBits::eTransferSrc |
         vk::BufferUsageFlagBits::eStorageBuffer);
 
+
+    // Map rays buffer and fill rays data
     auto ptr = reinterpret_cast<Ray*>(
         device_.mapMemory(
-            staging_buffer.memory,
-            staging_buffer.offset,
-            staging_buffer.size));
-
+            rays_staging.memory,
+            rays_staging.offset,
+            rays_staging.size));
     ASSERT_NE(ptr, nullptr);
 
     for (int i = 0; i < kBufferElements; ++i) {
         ptr[i] = data[i];
     }
 
-    auto mapped_range = vk::MappedMemoryRange{}
-        .setMemory(staging_buffer.memory)
-        .setOffset(staging_buffer.offset)
-        .setSize(staging_buffer.size);
-
+    vk::MappedMemoryRange mapped_range;
+    mapped_range
+        .setMemory(rays_staging.memory)
+        .setOffset(rays_staging.offset)
+        .setSize(rays_staging.size);
     device_.flushMappedMemoryRanges(mapped_range);
-    device_.unmapMemory(staging_buffer.memory);
+    device_.unmapMemory(rays_staging.memory);
 
-    auto cmd_allocate_info = vk::CommandBufferAllocateInfo{}
+
+    // Allocate 2 command buffers (for data copy src->dst and back)
+    vk::CommandBufferAllocateInfo cmdbuf_allocate_info;
+    cmdbuf_allocate_info
         .setCommandBufferCount(2)
         .setCommandPool(command_pool_)
         .setLevel(vk::CommandBufferLevel::ePrimary);
+    auto cmd_buffers 
+        = device_.allocateCommandBuffers(cmdbuf_allocate_info);
 
-    auto cmd_buffers = device_.allocateCommandBuffers(cmd_allocate_info);
-    auto fence_create_info = vk::FenceCreateInfo{};
+    // Create a fence
+    vk::FenceCreateInfo fence_create_info;
     auto fence = device_.createFence(fence_create_info);
 
     {
-        auto cmd_buffer_begin_info = vk::CommandBufferBeginInfo{}
-        .setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-        cmd_buffers[0].begin(cmd_buffer_begin_info);
-        auto cmd_copy = vk::BufferCopy{}
-        .setSize(staging_buffer.size);
-        cmd_buffers[0].copyBuffer(staging_buffer.buffer, device_buffer.buffer, cmd_copy);
+        // Begin command buffer
+        vk::CommandBufferBeginInfo cmdbuffer_begin_info;
+        cmdbuffer_begin_info
+            .setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+        cmd_buffers[0].begin(cmdbuffer_begin_info);
+        // Issue copy command
+        vk::BufferCopy cmd_copy;
+        cmd_copy
+            .setSize(rays_staging.size);
+        cmd_buffers[0].copyBuffer(rays_staging.buffer, rays_local.buffer, cmd_copy);
+
+        // Issue barrier for rays buffer host->RR (compute)
+        vk::BufferMemoryBarrier memory_barrier;
+        memory_barrier
+            .setBuffer(rays_local.buffer)
+            .setOffset(0)
+            .setSize(rays_local.size)
+            .setSrcAccessMask(vk::AccessFlagBits::eTransferWrite)
+            .setDstAccessMask(vk::AccessFlagBits::eShaderRead);
+        cmd_buffers[0].pipelineBarrier(
+            vk::PipelineStageFlagBits::eTransfer,
+            vk::PipelineStageFlagBits::eComputeShader,
+            vk::DependencyFlags{},
+            nullptr,
+            memory_barrier,
+            nullptr
+        );
+
+        // End command buffer
         cmd_buffers[0].end();
 
-        auto queue_submit_info = vk::SubmitInfo{}
+        // Submit to command queue
+        vk::SubmitInfo queue_submit_info;
+        queue_submit_info
             .setCommandBufferCount(1)
             .setPCommandBuffers(&cmd_buffers[0]);
-
         queue_.submit(queue_submit_info, nullptr);
     }
 
-
-    VkCommandBuffer temp;
-    auto status = rrIntersect(rr_instance_, device_buffer.buffer, device_buffer.buffer, 512, &temp);
-    ASSERT_EQ(status, RR_SUCCESS);
-    ASSERT_NE(temp, nullptr);
-    vk::CommandBuffer rt_buffer(temp);
-
+    VkCommandBuffer temp0, temp1;
+    // Commit geometry to RR
     {
-        auto queue_submit_info = vk::SubmitInfo{}
+        auto status = rrCommit(rr_instance_, &temp0);
+        ASSERT_EQ(status, RR_SUCCESS);
+        ASSERT_NE(temp0, nullptr);
+        vk::CommandBuffer commit_buffer(temp0);
+        vk::SubmitInfo queue_submit_info;
+        queue_submit_info
+            .setCommandBufferCount(1)
+            .setPCommandBuffers(&commit_buffer);
+        queue_.submit(queue_submit_info, nullptr);
+    }
+
+    // Execute intersection query
+    {
+        auto status = rrIntersect(
+            rr_instance_,
+            rays_local.buffer,
+            hits_local.buffer,
+            512,
+            &temp1);
+
+        ASSERT_EQ(status, RR_SUCCESS);
+        ASSERT_NE(temp1, nullptr);
+        vk::CommandBuffer rt_buffer(temp1);
+
+        vk::SubmitInfo queue_submit_info;
+        queue_submit_info
             .setCommandBufferCount(1)
             .setPCommandBuffers(&rt_buffer);
         queue_.submit(queue_submit_info, nullptr);
     }
 
+    // Read hit data back to the host
     {
-        auto cmd_buffer_begin_info = vk::CommandBufferBeginInfo{}
-        .setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-        cmd_buffers[1].begin(cmd_buffer_begin_info);
-        auto cmd_copy = vk::BufferCopy{}
-        .setSize(device_buffer.size);
-        cmd_buffers[1].copyBuffer(
-            device_buffer.buffer,
-            staging_buffer.buffer, cmd_copy);
+        vk::CommandBufferBeginInfo cmdbuffer_begin_info;
+        cmdbuffer_begin_info
+            .setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
 
-        vk::BufferMemoryBarrier barrier = vk::BufferMemoryBarrier{}
+        // Begin command buffer
+        cmd_buffers[1].begin(cmdbuffer_begin_info);
+
+        // Issue barrier
+        vk::BufferMemoryBarrier memory_barrier;
+        memory_barrier
             .setSrcAccessMask(vk::AccessFlagBits::eShaderWrite)
-            .setDstAccessMask(vk::AccessFlagBits::eHostRead)
-            .setBuffer(device_buffer.buffer)
-            .setSize(device_buffer.size)
+            .setDstAccessMask(vk::AccessFlagBits::eTransferRead)
+            .setBuffer(hits_local.buffer)
+            .setSize(hits_local.size)
             .setOffset(0);
-
         cmd_buffers[1].pipelineBarrier(
             vk::PipelineStageFlagBits::eComputeShader,
-            vk::PipelineStageFlagBits::eHost,
+            vk::PipelineStageFlagBits::eTransfer,
             vk::DependencyFlags{},
             0,
-            barrier,
+            memory_barrier,
             0);
 
+        // Issue copy command
+        vk::BufferCopy cmd_copy;
+        cmd_copy
+            .setSize(hits_local.size);
+        cmd_buffers[1].copyBuffer(
+            hits_local.buffer,
+            hits_staging.buffer,
+            cmd_copy);
+
+        // End command buffer recording
         cmd_buffers[1].end();
 
-        auto queue_submit_info = vk::SubmitInfo{}
+        // Submit to the queue
+        vk::SubmitInfo queue_submit_info;
+        queue_submit_info
             .setCommandBufferCount(1)
             .setPCommandBuffers(&cmd_buffers[1]);
         queue_.submit(queue_submit_info, fence);
-        device_.waitForFences(fence, true, std::numeric_limits<std::uint32_t>::max());
-        device_.resetFences(fence);
+
+        // Wait for the fence
+        device_.waitForFences(
+            fence,
+            true,
+            std::numeric_limits<std::uint32_t>::max());
     }
 
     {
-        auto ptr = reinterpret_cast<Ray*>(
+        // Map hits data
+        auto ptr = reinterpret_cast<Hit*>(
             device_.mapMemory(
-                staging_buffer.memory,
-                staging_buffer.offset,
-                staging_buffer.size));
-
-        auto mapped_range = vk::MappedMemoryRange{}
-            .setMemory(staging_buffer.memory)
-            .setOffset(staging_buffer.offset)
-            .setSize(staging_buffer.size);
-
+                hits_staging.memory,
+                hits_staging.offset,
+                hits_staging.size));
+        vk::MappedMemoryRange mapped_range;
+        mapped_range
+            .setMemory(hits_staging.memory)
+            .setOffset(hits_staging.offset)
+            .setSize(hits_staging.size);
         device_.invalidateMappedMemoryRanges(mapped_range);
-
         ASSERT_NE(ptr, nullptr);
 
         for (int i = 0; i < kBufferElements; ++i) {
             result[i] = ptr[i];
         }
 
-        device_.unmapMemory(staging_buffer.memory);
+        device_.unmapMemory(hits_staging.memory);
     }
 
-    //for (int i = 0; i < 512; ++i) {
-        //ASSERT_EQ(result[i], data[i] + 1);
-    //}
-
-    device_.freeCommandBuffers(command_pool_, rt_buffer);
     device_.destroyFence(fence);
+    device_.freeCommandBuffers(command_pool_, vk::CommandBuffer{ temp0 });
+    device_.freeCommandBuffers(command_pool_, vk::CommandBuffer{ temp1 });
     device_.freeCommandBuffers(command_pool_, cmd_buffers);
-    device_.destroyBuffer(staging_buffer.buffer);
-    device_.destroyBuffer(device_buffer.buffer);
+    device_.destroyBuffer(rays_staging.buffer);
+    device_.destroyBuffer(rays_local.buffer);
+    device_.destroyBuffer(hits_staging.buffer);
+    device_.destroyBuffer(hits_local.buffer);
 }
 

@@ -1,74 +1,45 @@
 #include <radeonrays.h>
 #include <vulkan/vulkan.hpp>
+
+#include <vector>
+
+#include "vk_mem_manager.h"
 #include "world.h"
 #include "mesh.h"
-
-#include <fstream>
-
-
-struct BVHNode {
-    float aabb_left_min_or_v0[3];
-    uint32_t addr_left;
-    float aabb_left_max_or_v1[3];
-    uint32_t mesh_id;
-    float aabb_right_min_or_v2[3];
-    uint32_t addr_right;
-    float aabb_right_max;
-    uint32_t prim_id;
-};
+#include "bvh.h"
+#include "bvh_encoder.h"
+#include "utils.h"
+#include "vk_utils.h"
 
 using namespace RadeonRays;
 
 struct Instance {
+    // Vulkan entities
     vk::Device device_ = nullptr;
     vk::CommandPool command_pool_ = nullptr;
     vk::PipelineCache pipeline_cache_ = nullptr;
     vk::PipelineLayout pipeline_layout_ = nullptr;
     vk::Pipeline intersect_pipeline_ = nullptr;
-    vk::DescriptorPool desc_pool_ = nullptr;
-    vk::DescriptorSetLayout desc_layout_ = nullptr;
-    vk::ShaderModule isect_module_ = nullptr;
-    std::vector<vk::DescriptorSet> desc_sets_;
+    vk::DescriptorPool descriptor_pool_ = nullptr;
+    vk::DescriptorSetLayout descriptor_set_layout_ = nullptr;
+    vk::ShaderModule isect_shader_module_ = nullptr;
+    std::vector<vk::DescriptorSet> descriptor_sets_;
+    VulkanMemoryManager::Buffer staging_bvh_buffer_;
+    VulkanMemoryManager::Buffer local_bvh_buffer_;
+
     World world_;
+    Bvh<BVHNode, BVHNodeTraits> bvh_;
+
+    // Staging & local memory managers
+    std::unique_ptr<VulkanMemoryManager> staging_memory_mgr_;
+    std::unique_ptr<VulkanMemoryManager> local_memory_mgr_;
 };
 
-static
-void LoadFileContents(std::string const& name, std::vector<char>& contents, bool binary = false)
-{
-    std::ifstream in(name, std::ios::in | (std::ios_base::openmode)(binary ? std::ios::binary : 0));
-
-    if (in)
-    {
-        contents.clear();
-        std::streamoff beg = in.tellg();
-        in.seekg(0, std::ios::end);
-        std::streamoff fileSize = in.tellg() - beg;
-        in.seekg(0, std::ios::beg);
-        contents.resize(static_cast<unsigned>(fileSize));
-        in.read(&contents[0], fileSize);
-    }
-    else
-    {
-        throw std::runtime_error("Cannot read the contents of a file");
-    }
-}
-
-static vk::ShaderModule LoadShaderModule(vk::Device device, std::string const& file_name)
-{
-    std::vector<char> bytecode;
-    LoadFileContents(file_name, bytecode, true);
-
-    vk::ShaderModuleCreateInfo info;
-    info.setCodeSize(bytecode.size())
-        .setPCode(
-            reinterpret_cast<std::uint32_t*>(&bytecode[0]));
-
-    return device.createShaderModule(info);
-}
 
 static void InitVulkan(
     Instance* instance,
     VkDevice device,
+    VkPhysicalDevice physical_device,
     VkCommandPool command_pool) {
 
     instance->device_ = device;
@@ -76,153 +47,198 @@ static void InitVulkan(
 
     auto& dev = instance->device_;
 
+    // Allocate memory pools
+    instance->staging_memory_mgr_.reset(
+        new VulkanMemoryManager(
+            dev,
+            physical_device,
+            vk::MemoryPropertyFlagBits::eHostVisible,
+            128 * 1024 * 1024));
+    instance->local_memory_mgr_.reset(
+        new VulkanMemoryManager(
+            dev,
+            physical_device,
+            vk::MemoryPropertyFlagBits::eDeviceLocal,
+            128 * 1024 * 1024));
+
+    // Create pipeline cache
     vk::PipelineCacheCreateInfo cache_create_info;
     instance->pipeline_cache_ = dev.createPipelineCache(cache_create_info);
 
+    // Create descriptor pool
     vk::DescriptorPoolSize pool_sizes;
     pool_sizes
         .setType(vk::DescriptorType::eStorageBuffer)
-        .setDescriptorCount(10);
+        .setDescriptorCount(4);
     vk::DescriptorPoolCreateInfo descriptor_pool_create_info;
     descriptor_pool_create_info
-        .setMaxSets(5)
+        .setMaxSets(2)
         .setPoolSizeCount(1)
         .setPPoolSizes(&pool_sizes);
-    instance->desc_pool_ = dev.createDescriptorPool(descriptor_pool_create_info);
+    instance->descriptor_pool_ =
+        dev.createDescriptorPool(descriptor_pool_create_info);
 
-    vk::DescriptorSetLayoutBinding layout_binding;
-    layout_binding
+    // Create bindings
+    // - Ray buffer 
+    // - Hit buffer 
+    // - BVH buffer
+    vk::DescriptorSetLayoutBinding layout_binding[3];
+    layout_binding[0]
         .setBinding(0)
         .setDescriptorCount(1)
         .setDescriptorType(vk::DescriptorType::eStorageBuffer)
         .setStageFlags(vk::ShaderStageFlagBits::eCompute);
+    layout_binding[1]
+        .setBinding(1)
+        .setDescriptorCount(1)
+        .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+        .setStageFlags(vk::ShaderStageFlagBits::eCompute);
+    layout_binding[2]
+        .setBinding(2)
+        .setDescriptorCount(1)
+        .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+        .setStageFlags(vk::ShaderStageFlagBits::eCompute);
 
-    vk::DescriptorSetLayoutCreateInfo desc_layout_create_info;
-    desc_layout_create_info
-        .setBindingCount(1)
-        .setPBindings(&layout_binding);
-    instance->desc_layout_ = dev.createDescriptorSetLayout(desc_layout_create_info);
+    // Create descriptor set layout
+    vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_create_info;
+    descriptor_set_layout_create_info
+        .setBindingCount(3)
+        .setPBindings(layout_binding);
+    instance->descriptor_set_layout_
+        = dev.createDescriptorSetLayout(descriptor_set_layout_create_info);
 
+    // Allocate descriptors
     vk::DescriptorSetAllocateInfo desc_alloc_info;
-    desc_alloc_info.setDescriptorPool(instance->desc_pool_);
+    desc_alloc_info.setDescriptorPool(instance->descriptor_pool_);
     desc_alloc_info.setDescriptorSetCount(1);
-    desc_alloc_info.setPSetLayouts(&instance->desc_layout_);
-    instance->desc_sets_ = dev.allocateDescriptorSets(desc_alloc_info);
+    desc_alloc_info.setPSetLayouts(&instance->descriptor_set_layout_);
+    instance->descriptor_sets_ = dev.allocateDescriptorSets(desc_alloc_info);
 
+    // Ray count is a push constant, so create range for it
     vk::PushConstantRange push_constant_range;
     push_constant_range.setOffset(0)
         .setSize(4u)
         .setStageFlags(vk::ShaderStageFlagBits::eCompute);
 
+    // Create pipeline layout
     vk::PipelineLayoutCreateInfo pipeline_layout_create_info;
     pipeline_layout_create_info
         .setSetLayoutCount(1)
-        .setPSetLayouts(&instance->desc_layout_)
+        .setPSetLayouts(&instance->descriptor_set_layout_)
         .setPushConstantRangeCount(1)
         .setPPushConstantRanges(&push_constant_range);
-    instance->pipeline_layout_ = dev.createPipelineLayout(pipeline_layout_create_info);
-    instance->isect_module_ = LoadShaderModule(dev, "../../shaders/isect.comp.spv");
+    instance->pipeline_layout_ =
+        dev.createPipelineLayout(pipeline_layout_create_info);
 
+    // Load intersection shader module
+    instance->isect_shader_module_ =
+        LoadShaderModule(dev, "../../shaders/isect.comp.spv");
+
+    // Create pipeline 
     vk::PipelineShaderStageCreateInfo shader_stage_create_info;
     shader_stage_create_info
         .setStage(vk::ShaderStageFlagBits::eCompute)
-        .setModule(instance->isect_module_)
+        .setModule(instance->isect_shader_module_)
         .setPName("main");
-
     vk::ComputePipelineCreateInfo pipeline_create_info;
     pipeline_create_info
         .setLayout(instance->pipeline_layout_)
         .setStage(shader_stage_create_info);
-
     instance->intersect_pipeline_ = 
         instance->device_.createComputePipeline(
             instance->pipeline_cache_,
             pipeline_create_info);
 }
 
+
 static void ShutdownVulkan(Instance* instance) {
     auto& dev = instance->device_;
-    dev.destroyShaderModule(instance->isect_module_);
+    dev.destroyShaderModule(instance->isect_shader_module_);
     dev.destroyPipeline(instance->intersect_pipeline_);
     dev.destroyPipelineCache(instance->pipeline_cache_);
-    dev.destroyDescriptorPool(instance->desc_pool_);
-    dev.destroyDescriptorSetLayout(instance->desc_layout_);
+    dev.destroyDescriptorPool(instance->descriptor_pool_);
+    dev.destroyDescriptorSetLayout(instance->descriptor_set_layout_);
     dev.destroyPipelineLayout(instance->pipeline_layout_);
 }
 
-
-rr_status rrInitInstance(VkDevice device, VkCommandPool command_pool, rr_instance* out_instance) {
-
+rr_status rrInitInstance(
+    VkDevice device,
+    VkPhysicalDevice physical_device,
+    VkCommandPool command_pool,
+    rr_instance* out_instance) {
     if (!device || !command_pool) {
         *out_instance = nullptr;
         return RR_ERROR_INVALID_VALUE;
     }
 
     auto instance = new Instance {};
-
-    InitVulkan(instance, device, command_pool);
-
+    InitVulkan(instance, device, physical_device, command_pool);
 
     *out_instance = reinterpret_cast<rr_instance>(instance);
     return RR_SUCCESS;
 }
 
-rr_status rrIntersect(rr_instance inst, VkBuffer ray_buffer, VkBuffer hit_buffer, uint32_t num_rays, VkCommandBuffer* out_command_buffer) {
-    // Update descriptor sets
+rr_status rrIntersect(
+    rr_instance inst,
+    VkBuffer ray_buffer,
+    VkBuffer hit_buffer,
+    uint32_t num_rays,
+    VkCommandBuffer* out_command_buffer) {
     auto instance = reinterpret_cast<Instance*>(inst);
     auto& dev = instance->device_;
 
-    vk::DescriptorBufferInfo desc_buffer_info;
-    desc_buffer_info.setBuffer(ray_buffer);
-    desc_buffer_info.setOffset(0);
-    desc_buffer_info.setRange(vk::DeviceSize{ num_rays * sizeof(Ray) });
+    // Update descriptor sets
+    vk::DescriptorBufferInfo desc_buffer_info[3];
+    desc_buffer_info[0]
+        .setBuffer(ray_buffer)
+        .setOffset(0)
+        .setRange(num_rays * sizeof(Ray));
+    desc_buffer_info[1]
+        .setBuffer(hit_buffer)
+        .setOffset(0)
+        .setRange(num_rays * sizeof(Hit));
+    desc_buffer_info[2]
+        .setBuffer(instance->local_bvh_buffer_.buffer)
+        .setOffset(0)
+        .setRange(instance->local_bvh_buffer_.size);
 
     vk::WriteDescriptorSet desc_writes;
-    desc_writes.setDescriptorCount(1)
+    desc_writes
+        .setDescriptorCount(3)
         .setDescriptorType(vk::DescriptorType::eStorageBuffer)
-        .setDstSet(instance->desc_sets_[0])
+        .setDstSet(instance->descriptor_sets_[0])
         .setDstBinding(0)
-        .setDescriptorCount(1)
-        .setPBufferInfo(&desc_buffer_info);
-
+        .setPBufferInfo(&desc_buffer_info[0]);
     dev.updateDescriptorSets(desc_writes, nullptr);
 
     // Allocate command buffer
-    vk::CommandBufferAllocateInfo cmd_info;
-    cmd_info.setCommandBufferCount(1)
+    vk::CommandBufferAllocateInfo cmdbuffer_alloc_info;
+    cmdbuffer_alloc_info
+        .setCommandBufferCount(1)
         .setCommandPool(instance->command_pool_)
         .setLevel(vk::CommandBufferLevel::ePrimary);
+    auto cmd_buffers = dev.allocateCommandBuffers(cmdbuffer_alloc_info);
 
-    auto cmd_buffers = dev.allocateCommandBuffers(cmd_info);
+    // Begin command buffer recording
+    vk::CommandBufferBeginInfo cmdbuffer_begin_info;
+    cmdbuffer_begin_info
+        .setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+    cmd_buffers[0].begin(cmdbuffer_begin_info);
 
-    vk::CommandBufferBeginInfo cmd_begin_info;
-    cmd_begin_info.setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
-    cmd_buffers[0].begin(cmd_begin_info);
+    // Bind intersection pipeline
     cmd_buffers[0].bindPipeline(
         vk::PipelineBindPoint::eCompute,
         instance->intersect_pipeline_);
+
+    // Bind descriptor sets
     cmd_buffers[0].bindDescriptorSets(
         vk::PipelineBindPoint::eCompute,
         instance->pipeline_layout_,
         0,
-        instance->desc_sets_,
+        instance->descriptor_sets_,
         nullptr);
 
-    vk::BufferMemoryBarrier memory_barrier;
-    memory_barrier.setBuffer(ray_buffer)
-        .setOffset(0)
-        .setSize(num_rays * sizeof(Ray))
-        .setSrcAccessMask(vk::AccessFlagBits::eTransferWrite)
-        .setDstAccessMask(vk::AccessFlagBits::eShaderRead);
-
-    cmd_buffers[0].pipelineBarrier(
-        vk::PipelineStageFlagBits::eTransfer,
-        vk::PipelineStageFlagBits::eComputeShader,
-        vk::DependencyFlags{},
-        nullptr,
-        memory_barrier,
-        nullptr);
-
+    // Push constants
     auto N = static_cast<std::uint32_t>(num_rays);
     cmd_buffers[0].pushConstants(
         instance->pipeline_layout_, 
@@ -231,30 +247,45 @@ rr_status rrIntersect(rr_instance inst, VkBuffer ray_buffer, VkBuffer hit_buffer
         sizeof(std::uint32_t),
         &N);
 
+    // Dispatch intersection shader
     cmd_buffers[0].dispatch(2, 1, 1);
+
+    // End command buffer
     cmd_buffers[0].end();
 
     *out_command_buffer = cmd_buffers[0];
-
     return RR_SUCCESS;
 }
 
-rr_status rrOccluded(rr_instance instance, VkBuffer ray_buffer, VkBuffer hit_buffer, unsigned int num_rays, VkCommandBuffer* out_command_buffer) {
+rr_status rrOccluded(
+    rr_instance instance,
+    VkBuffer ray_buffer,
+    VkBuffer hit_buffer,
+    uint32_t num_rays,
+    VkCommandBuffer* out_command_buffer) {
     return RR_ERROR_NOT_IMPLEMENTED;
 }
 
-rr_status rrShutdownInstance(rr_instance instance) {
-    if (instance) {
-        ShutdownVulkan(reinterpret_cast<Instance*>(instance));
-        delete instance;
-        return RR_SUCCESS;
-    } else {
+rr_status rrShutdownInstance(rr_instance inst) {
+    if (!inst) {
         return RR_ERROR_INVALID_VALUE;
     }
+
+    auto instance = reinterpret_cast<Instance*>(inst);
+
+    if (instance->local_bvh_buffer_.buffer) {
+        instance->device_.destroyBuffer(instance->local_bvh_buffer_.buffer);
+        instance->device_.destroyBuffer(instance->staging_bvh_buffer_.buffer);
+    }
+
+    ShutdownVulkan(instance);
+
+    delete instance;
+    return RR_SUCCESS;
 }
 
 rr_status rrCreateTriangleMesh(
-    rr_instance* inst,
+    rr_instance inst,
     float const* vertices,
     std::uint32_t num_vertices,
     std::uint32_t vertex_stride,
@@ -269,7 +300,7 @@ rr_status rrCreateTriangleMesh(
     }
 
     auto instance = reinterpret_cast<Instance*>(inst);
-    auto mesh = new RadeonRays::Mesh(
+    auto mesh = new Mesh(
         vertices,
         num_vertices,
         vertex_stride,
@@ -284,7 +315,7 @@ rr_status rrCreateTriangleMesh(
     return RR_SUCCESS;
 }
 
-rr_status rrAttachShape(rr_instance* inst, rr_shape s) {
+rr_status rrAttachShape(rr_instance inst, rr_shape s) {
     if (!inst || !s) {
         return RR_ERROR_INVALID_VALUE;
     }
@@ -296,7 +327,7 @@ rr_status rrAttachShape(rr_instance* inst, rr_shape s) {
     return RR_SUCCESS;
 }
 
-RR_API rr_status rrDetachShape(rr_instance* inst, rr_shape s) {
+rr_status rrDetachShape(rr_instance inst, rr_shape s) {
     if (!inst || !s) {
         return RR_ERROR_INVALID_VALUE;
     }
@@ -308,7 +339,7 @@ RR_API rr_status rrDetachShape(rr_instance* inst, rr_shape s) {
     return RR_SUCCESS;
 }
 
-RR_API rr_status rrDetachAllShapes(rr_instance* inst) {
+rr_status rrDetachAllShapes(rr_instance inst) {
     if (!inst) {
         return RR_ERROR_INVALID_VALUE;
     }
@@ -319,15 +350,111 @@ RR_API rr_status rrDetachAllShapes(rr_instance* inst) {
     return RR_SUCCESS;
 }
 
-RR_API rr_status rrCommit(rr_instance* inst) {
-    if (!inst) {
+rr_status rrCommit(rr_instance inst, VkCommandBuffer* out_command_buffer) {
+    if (!inst | !out_command_buffer) {
         return RR_ERROR_INVALID_VALUE;
     }
 
+    auto instance = reinterpret_cast<Instance*>(inst);
+
+    // Build BVH
+    instance->bvh_.Clear();
+    instance->bvh_.Build(instance->world_.cbegin(), instance->world_.cend());
+    BVHNodeTraits::PropagateBounds(instance->bvh_);
+
+    auto bvh_size_in_bytes 
+        = instance->bvh_.num_nodes() * sizeof(BVHNode);
+
+    // Reallocate buffers if needed
+    if (bvh_size_in_bytes > instance->local_bvh_buffer_.size) {
+        if (instance->local_bvh_buffer_.buffer) {
+            instance->device_.destroyBuffer(instance->local_bvh_buffer_.buffer);
+            instance->device_.destroyBuffer(instance->staging_bvh_buffer_.buffer);
+        }
+
+        instance->staging_bvh_buffer_ = 
+            instance->staging_memory_mgr_->CreateBuffer(
+                bvh_size_in_bytes,
+                vk::BufferUsageFlagBits::eTransferSrc);
+
+        instance->local_bvh_buffer_ =
+            instance->local_memory_mgr_->CreateBuffer(
+                bvh_size_in_bytes,
+                vk::BufferUsageFlagBits::eTransferDst |
+                vk::BufferUsageFlagBits::eStorageBuffer
+            );
+    }
+
+    // Map staging buffer
+    auto ptr = reinterpret_cast<BVHNode*>(
+        instance->device_.mapMemory(
+            instance->staging_bvh_buffer_.memory,
+            instance->staging_bvh_buffer_.offset,
+            instance->staging_bvh_buffer_.size));
+
+    auto mapped_range = vk::MappedMemoryRange{}
+        .setMemory(instance->staging_bvh_buffer_.memory)
+        .setOffset(instance->staging_bvh_buffer_.offset)
+        .setSize(instance->staging_bvh_buffer_.size);
+
+    // Copy BVH data
+    for (auto i = 0u; i < instance->bvh_.num_nodes(); ++i) {
+        ptr[i] = *instance->bvh_.GetNode(i);
+    }
+
+    instance->device_.flushMappedMemoryRanges(mapped_range);
+    instance->device_.unmapMemory(instance->staging_bvh_buffer_.memory);
+
+    // Allocate command buffer
+    vk::CommandBufferAllocateInfo cmdbuffer_alloc_info;
+    cmdbuffer_alloc_info
+        .setCommandBufferCount(1)
+        .setCommandPool(instance->command_pool_)
+        .setLevel(vk::CommandBufferLevel::ePrimary);
+
+    auto cmd_buffers
+        = instance->device_.allocateCommandBuffers(cmdbuffer_alloc_info);
+
+    // Begin command buffer
+    vk::CommandBufferBeginInfo cmdbuffer_buffer_begin_info;
+    cmdbuffer_buffer_begin_info
+        .setFlags(vk::CommandBufferUsageFlagBits::eOneTimeSubmit);
+    cmd_buffers[0].begin(cmdbuffer_buffer_begin_info);
+
+    // Copy BVH data from staging to local
+    vk::BufferCopy cmd_copy;
+    cmd_copy
+        .setSize(instance->staging_bvh_buffer_.size);
+    cmd_buffers[0].copyBuffer(
+        instance->staging_bvh_buffer_.buffer,
+        instance->local_bvh_buffer_.buffer,
+        cmd_copy);
+
+    // Issue memory barrier for BVH buffer
+    vk::BufferMemoryBarrier memory_barrier;
+    memory_barrier
+        .setBuffer(instance->local_bvh_buffer_.buffer)
+        .setOffset(0)
+        .setSize(instance->local_bvh_buffer_.size)
+        .setSrcAccessMask(vk::AccessFlagBits::eTransferWrite)
+        .setDstAccessMask(vk::AccessFlagBits::eShaderRead);
+    cmd_buffers[0].pipelineBarrier(
+        vk::PipelineStageFlagBits::eTransfer,
+        vk::PipelineStageFlagBits::eComputeShader,
+        vk::DependencyFlags{},
+        nullptr,
+        memory_barrier,
+        nullptr
+    );
+
+    // End command buffer
+    cmd_buffers[0].end();
+
+    *out_command_buffer = cmd_buffers[0];
     return RR_SUCCESS;
 }
 
-RR_API rr_status rrDeleteShape(rr_instance* inst, rr_shape s) {
+rr_status rrDeleteShape(rr_instance inst, rr_shape s) {
     if (!inst || !s) {
         return RR_ERROR_INVALID_VALUE;
     }

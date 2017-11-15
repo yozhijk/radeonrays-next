@@ -26,8 +26,6 @@ THE SOFTWARE.
 #include "world.h"
 #include "mesh.h"
 #include "bvh.h"
-#define TINYOBJLOADER_IMPLEMENTATION
-#include "tiny_obj_loader.h"
 
 #include <vector>
 #include <stack>
@@ -43,7 +41,7 @@ struct BvhNode {
 };
 
 struct BvhNodeTraits {
-    static std::uint32_t constexpr kMaxLeafPrimitives = 1u;
+    static std::uint32_t constexpr kMaxLeafPrimitives = 4u;
     static std::uint32_t constexpr kMinSAHPrimitives = 64u;
     static std::uint32_t constexpr kTraversalCost = 10u;
 
