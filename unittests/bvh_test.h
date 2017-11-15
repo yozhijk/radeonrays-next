@@ -41,7 +41,7 @@ struct BvhNode {
 };
 
 struct BvhNodeTraits {
-    static std::uint32_t constexpr kMaxLeafPrimitives = 4u;
+    static std::uint32_t constexpr kMaxLeafPrimitives = 8u;
     static std::uint32_t constexpr kMinSAHPrimitives = 64u;
     static std::uint32_t constexpr kTraversalCost = 10u;
 

@@ -12,7 +12,7 @@ struct Ray {
 struct Hit {
     uint shape_id;
     uint prim_id;
-    float uv[2];
+    vec2 uv;
 };
 
 struct BVHNode {
@@ -99,6 +99,23 @@ vec3 safe_invdir(vec3 d) {
     return invdir;
 }
 
+vec2 calculate_barycentrics(vec3 p, vec3 v1, vec3 v2, vec3 v3) {
+    vec3 e1 = v2 - v1;
+    vec3 e2 = v3 - v1;
+    vec3 e = p - v1;
+    float d00 = dot(e1, e1);
+    float d01 = dot(e1, e2);
+    float d11 = dot(e2, e2);
+    float d20 = dot(e, e1);
+    float d21 = dot(e, e2);
+
+    float invdenom = 1.f / (d00 * d11 - d01 * d01);
+
+    float b1 = (d11 * d20 - d01 * d21) * invdenom;
+    float b2 = (d00 * d21 - d01 * d20) * invdenom;
+    return vec2(b1, b2);
+}
+
 void main() {
 	uint index = gl_GlobalInvocationID.x;
 	
@@ -107,6 +124,7 @@ void main() {
 
 	Ray myRay = rays[index];
 	vec3 invDir = safe_invdir(myRay.direction);
+	vec3 oxInvDir = -myRay.origin * invDir;
 
 	float closest_t = myRay.max_t;
 	uint closest_addr = INVALID_ADDR;
@@ -116,19 +134,20 @@ void main() {
 
 	stack[sptr++] = INVALID_ADDR;
 	uint addr = 0;
-
+	uint steps = 0;
 	while (addr != INVALID_ADDR) {
+		++steps;
 		BVHNode node = bvh[addr];
 
 		if (INTERNAL_NODE(node)) {
 			vec2 s0 = fast_intersect_aabb(
 				node.aabb_left_min_or_v0,
 				node.aabb_left_max_or_v1,
-				myRay.direction, invDir, closest_t);
+				invDir, oxInvDir, closest_t);
             vec2 s1 = fast_intersect_aabb(
 				node.aabb_right_min_or_v2,
 				node.aabb_right_max,
-				myRay.direction, invDir, closest_t);
+				invDir, oxInvDir, closest_t);
 
         	bool traverse_c0 = (s0.x <= s0.y);
         	bool traverse_c1 = (s1.x <= s1.y);
@@ -169,7 +188,23 @@ void main() {
 		addr = stack[--sptr];
 	}
 
+	if (closest_addr != INVALID_ADDR) {
+		BVHNode node = bvh[closest_addr];
+		vec3 p = myRay.origin + closest_t * myRay.direction;
 
+		Hit hit;
+		hit.uv = calculate_barycentrics(
+			p, 
+			node.aabb_left_min_or_v0,
+			node.aabb_left_max_or_v1,
+			node.aabb_right_min_or_v2
+			);
 
-	hits[index].prim_id = index;
+		hit.prim_id = node.prim_id;
+		hit.shape_id = node.mesh_id;
+		hits[index] = hit;
+	} else {
+		hits[index].shape_id = INVALID_ADDR;
+		hits[index].prim_id = steps;
+	}
 }

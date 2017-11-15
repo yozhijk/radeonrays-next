@@ -248,7 +248,8 @@ rr_status rrIntersect(
         &N);
 
     // Dispatch intersection shader
-    cmd_buffers[0].dispatch(2, 1, 1);
+    auto num_groups = (num_rays + 255) / 256;
+    cmd_buffers[0].dispatch(num_groups, 1, 1);
 
     // End command buffer
     cmd_buffers[0].end();

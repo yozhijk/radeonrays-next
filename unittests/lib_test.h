@@ -282,6 +282,18 @@ TEST_F(LibTest, InitBuffers) {
     std::vector<Ray> data(kBufferElements);
     std::vector<Hit> result(kBufferElements);
 
+    for (int i = 0; i < data.size(); ++i) {
+        data[i].origin[0] = 0.f;
+        data[i].origin[1] = 1.f;
+        data[i].origin[2] = 3.f;
+
+        data[i].direction[0] = 0.25f * ((float)(rand())/RAND_MAX) - 0.125f;
+        data[i].direction[1] = 0.25f * ((float)(rand()) / RAND_MAX) - 0.125f;
+        data[i].direction[2] = -1.f;
+
+        data[i].max_t = 1000.f;
+    }
+
     // Allocate rays and hits buffer
     auto rays_staging = m_staging_mgr->CreateBuffer(
         kBufferElements * sizeof(Ray),
@@ -297,7 +309,6 @@ TEST_F(LibTest, InitBuffers) {
         kBufferElements * sizeof(Hit),
         vk::BufferUsageFlagBits::eTransferSrc |
         vk::BufferUsageFlagBits::eStorageBuffer);
-
 
     // Map rays buffer and fill rays data
     auto ptr = reinterpret_cast<Ray*>(
