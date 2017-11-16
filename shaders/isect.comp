@@ -54,7 +54,7 @@ float mymax3(float a, float b, float c) {
 	return max(c, max(a,b));
 }
 
-float fast_intersect_triangle(Ray r, vec3 v1, vec3 v2, vec3 v3, float t_max) {
+inline float fast_intersect_triangle(Ray r, vec3 v1, vec3 v2, vec3 v3, float t_max) {
     vec3 e1 = v2 - v1;
     vec3 e2 = v3 - v1;
     vec3 s1 = cross(r.direction, e2);
@@ -109,7 +109,7 @@ vec2 calculate_barycentrics(vec3 p, vec3 v1, vec3 v2, vec3 v3) {
     float d20 = dot(e, e1);
     float d21 = dot(e, e2);
 
-    float invdenom = 1.f / (d00 * d11 - d01 * d01);
+    float invdenom = 1.0 / (d00 * d11 - d01 * d01);
 
     float b1 = (d11 * d20 - d01 * d21) * invdenom;
     float b2 = (d00 * d21 - d01 * d20) * invdenom;
@@ -134,9 +134,7 @@ void main() {
 
 	stack[sptr++] = INVALID_ADDR;
 	uint addr = 0;
-	uint steps = 0;
 	while (addr != INVALID_ADDR) {
-		++steps;
 		BVHNode node = bvh[addr];
 
 		if (INTERNAL_NODE(node)) {
@@ -205,6 +203,5 @@ void main() {
 		hits[index] = hit;
 	} else {
 		hits[index].shape_id = INVALID_ADDR;
-		hits[index].prim_id = steps;
 	}
 }

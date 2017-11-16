@@ -366,6 +366,10 @@ rr_status rrCommit(rr_instance inst, VkCommandBuffer* out_command_buffer) {
     auto bvh_size_in_bytes 
         = instance->bvh_.num_nodes() * sizeof(BVHNode);
 
+#ifdef TEST
+    std::cout << "BVH size is " << bvh_size_in_bytes / 1024.f / 1024.f << "MB";
+#endif
+
     // Reallocate buffers if needed
     if (bvh_size_in_bytes > instance->local_bvh_buffer_.size) {
         if (instance->local_bvh_buffer_.buffer) {

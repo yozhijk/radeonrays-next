@@ -119,7 +119,7 @@ namespace RadeonRays {
                     auto v2 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[2]));
 
                     auto pmin = _mm_min_ps(_mm_min_ps(v0, v1), v2);
-                    auto pmax = _mm_max_ps(_mm_min_ps(v0, v1), v2);
+                    auto pmax = _mm_max_ps(_mm_max_ps(v0, v1), v2);
                     auto centroid = _mm_mul_ps(
                         _mm_add_ps(pmin, pmax),
                         _mm_set_ps(0.5f, 0.5f, 0.5f, 0.5f));

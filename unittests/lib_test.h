@@ -22,10 +22,12 @@ THE SOFTWARE.
 #pragma once
 
 #include "gtest/gtest.h"
-
 #include <radeonrays.h>
-
 #include <vulkan/vulkan.hpp>
+
+#define _CRT_SECURE_NO_WARNINGS
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 class VulkanMemoryManager {
 public:
@@ -42,9 +44,9 @@ public:
         vk::PhysicalDevice physical_device,
         vk::MemoryPropertyFlags property_flags,
         std::size_t pool_size)
-    : device_(device)
-    , physical_device_(physical_device)
-    , pool_size_(pool_size) {
+        : device_(device)
+        , physical_device_(physical_device)
+        , pool_size_(pool_size) {
         auto mem_props = physical_device_.getMemoryProperties();
 
         int mem_type_index = -1;
@@ -114,10 +116,10 @@ public:
     std::size_t next_free_index_ = 0;
 };
 
-#define CORNELL_BOX "../../data/cornellbox.obj"
 
 class LibTest : public ::testing::Test {
 public:
+    void TraceRays(std::vector<Ray> const& data, std::vector<Hit>& result);
 
     void SetUp() override {
         auto app_info = vk::ApplicationInfo()
@@ -184,8 +186,6 @@ public:
             physical_device_,
             vk::MemoryPropertyFlagBits::eDeviceLocal,
             512 * 1024 * 1024);
-
-        LoadScene(CORNELL_BOX);
     }
 
     void TearDown() override {
@@ -276,37 +276,21 @@ TEST_F(LibTest, Init) {
     device_.destroyBuffer(rays_local.buffer);
 }
 
-TEST_F(LibTest, InitBuffers) {
-    auto constexpr kBufferElements = 512;
-
-    std::vector<Ray> data(kBufferElements);
-    std::vector<Hit> result(kBufferElements);
-
-    for (int i = 0; i < data.size(); ++i) {
-        data[i].origin[0] = 0.f;
-        data[i].origin[1] = 1.f;
-        data[i].origin[2] = 3.f;
-
-        data[i].direction[0] = 0.25f * ((float)(rand())/RAND_MAX) - 0.125f;
-        data[i].direction[1] = 0.25f * ((float)(rand()) / RAND_MAX) - 0.125f;
-        data[i].direction[2] = -1.f;
-
-        data[i].max_t = 1000.f;
-    }
-
+void LibTest::TraceRays(std::vector<Ray> const& data, std::vector<Hit>& result) {
+    auto num_rays = data.size();
     // Allocate rays and hits buffer
     auto rays_staging = m_staging_mgr->CreateBuffer(
-        kBufferElements * sizeof(Ray),
+        num_rays * sizeof(Ray),
         vk::BufferUsageFlagBits::eTransferSrc);
     auto hits_staging = m_staging_mgr->CreateBuffer(
-        kBufferElements * sizeof(Hit),
+        num_rays * sizeof(Hit),
         vk::BufferUsageFlagBits::eTransferDst);
     auto rays_local = m_local_mgr->CreateBuffer(
-        kBufferElements * sizeof(Ray),
+        num_rays * sizeof(Ray),
         vk::BufferUsageFlagBits::eTransferDst |
         vk::BufferUsageFlagBits::eStorageBuffer);
     auto hits_local = m_local_mgr->CreateBuffer(
-        kBufferElements * sizeof(Hit),
+        num_rays * sizeof(Hit),
         vk::BufferUsageFlagBits::eTransferSrc |
         vk::BufferUsageFlagBits::eStorageBuffer);
 
@@ -318,7 +302,7 @@ TEST_F(LibTest, InitBuffers) {
             rays_staging.size));
     ASSERT_NE(ptr, nullptr);
 
-    for (int i = 0; i < kBufferElements; ++i) {
+    for (int i = 0; i < num_rays; ++i) {
         ptr[i] = data[i];
     }
 
@@ -337,7 +321,7 @@ TEST_F(LibTest, InitBuffers) {
         .setCommandBufferCount(2)
         .setCommandPool(command_pool_)
         .setLevel(vk::CommandBufferLevel::ePrimary);
-    auto cmd_buffers 
+    auto cmd_buffers
         = device_.allocateCommandBuffers(cmdbuf_allocate_info);
 
     // Create a fence
@@ -354,7 +338,8 @@ TEST_F(LibTest, InitBuffers) {
         vk::BufferCopy cmd_copy;
         cmd_copy
             .setSize(rays_staging.size);
-        cmd_buffers[0].copyBuffer(rays_staging.buffer, rays_local.buffer, cmd_copy);
+        cmd_buffers[0].
+            copyBuffer(rays_staging.buffer, rays_local.buffer, cmd_copy);
 
         // Issue barrier for rays buffer host->RR (compute)
         vk::BufferMemoryBarrier memory_barrier;
@@ -400,22 +385,33 @@ TEST_F(LibTest, InitBuffers) {
 
     // Execute intersection query
     {
+        device_.waitIdle();
+        using namespace std::chrono;
         auto status = rrIntersect(
             rr_instance_,
             rays_local.buffer,
             hits_local.buffer,
-            512,
+            num_rays,
             &temp1);
 
         ASSERT_EQ(status, RR_SUCCESS);
         ASSERT_NE(temp1, nullptr);
         vk::CommandBuffer rt_buffer(temp1);
 
+        auto start = high_resolution_clock::now();
         vk::SubmitInfo queue_submit_info;
         queue_submit_info
             .setCommandBufferCount(1)
             .setPCommandBuffers(&rt_buffer);
-        queue_.submit(queue_submit_info, nullptr);
+        queue_.submit(queue_submit_info, fence);
+        device_.waitForFences(
+            fence,
+            true,
+            std::numeric_limits<std::uint32_t>::max());
+        auto delta = high_resolution_clock::now() - start;
+        float ms = duration_cast<milliseconds>(delta).count();
+        std::cout << "Ray query time " << ms << "ms\n";
+        device_.resetFences(fence);
     }
 
     // Read hit data back to the host
@@ -429,12 +425,14 @@ TEST_F(LibTest, InitBuffers) {
 
         // Issue barrier
         vk::BufferMemoryBarrier memory_barrier;
+
         memory_barrier
             .setSrcAccessMask(vk::AccessFlagBits::eShaderWrite)
             .setDstAccessMask(vk::AccessFlagBits::eTransferRead)
             .setBuffer(hits_local.buffer)
             .setSize(hits_local.size)
             .setOffset(0);
+
         cmd_buffers[1].pipelineBarrier(
             vk::PipelineStageFlagBits::eComputeShader,
             vk::PipelineStageFlagBits::eTransfer,
@@ -484,7 +482,7 @@ TEST_F(LibTest, InitBuffers) {
         device_.invalidateMappedMemoryRanges(mapped_range);
         ASSERT_NE(ptr, nullptr);
 
-        for (int i = 0; i < kBufferElements; ++i) {
+        for (int i = 0; i < num_rays; ++i) {
             result[i] = ptr[i];
         }
 
@@ -499,5 +497,97 @@ TEST_F(LibTest, InitBuffers) {
     device_.destroyBuffer(rays_local.buffer);
     device_.destroyBuffer(hits_staging.buffer);
     device_.destroyBuffer(hits_local.buffer);
+
+}
+
+TEST_F(LibTest, CornellBox) {
+    LoadScene(CORNELL_BOX);
+    auto constexpr kResolution = 1024;
+
+    std::vector<Ray> data(kResolution * kResolution);
+    std::vector<Hit> result(kResolution * kResolution);
+
+    for (int x = 0; x < kResolution; ++x) {
+        for (int y = 0; y < kResolution; ++y) {
+            auto i = kResolution * y + x;
+
+            data[i].origin[0] = 0.f;
+            data[i].origin[1] = 1.f;
+            data[i].origin[2] = 3.f;
+
+            data[i].direction[0] = -1.f + (2.f / kResolution) * x;
+            data[i].direction[1] = -1.f + (2.f / kResolution) * y;
+            data[i].direction[2] = -1.f;
+
+            data[i].max_t = 100000.f;
+        }
+    }
+
+    TraceRays(data, result);
+
+    std::vector<std::uint8_t> imgdata(kResolution * kResolution * 3);
+
+    std::fill(imgdata.begin(), imgdata.end(), 20u);
+
+    for (auto x = 0u; x < kResolution; ++x) {
+        for (auto y = 0u; y < kResolution; ++y) {
+            auto i = kResolution * y + x;
+            auto j = kResolution * (kResolution - 1 - y) + x;
+
+            if (result[i].shape_id != RR_INVALID_ID) {
+                imgdata[3 * j] = (std::uint8_t)(200u * result[i].uv[0]);
+                imgdata[3 * j + 1] = (std::uint8_t)(200u * result[i].uv[1]);
+                imgdata[3 * j + 2] = 200u;
+            }
+        }
+    }
+
+    stbi_write_jpg("CornellBox.jpg", kResolution, kResolution, 3, &imgdata[0], 10);
+}
+
+TEST_F(LibTest, Sponza) {
+
+    LoadScene(CRYTEK_SPONZA);
+    auto constexpr kResolution = 1024;
+
+    std::vector<Ray> data(kResolution * kResolution);
+    std::vector<Hit> result(kResolution * kResolution);
+
+    for (int x = 0; x < kResolution; ++x) {
+        for (int y = 0; y < kResolution; ++y) {
+            auto i = kResolution * y + x;
+
+            data[i].origin[0] = 0.f;
+            data[i].origin[1] = 200.f;
+            data[i].origin[2] = 0.f;
+
+            data[i].direction[0] = -1.f;
+            data[i].direction[1] = -1.f + (2.f / kResolution) * y;
+            data[i].direction[2] = -1.f + (2.f / kResolution) * x;
+
+            data[i].max_t = 100000.f;
+        }
+    }
+
+    TraceRays(data, result);
+
+    std::vector<std::uint8_t> imgdata(kResolution * kResolution * 3);
+
+    std::fill(imgdata.begin(), imgdata.end(), 20u);
+
+    for (auto x = 0u; x < kResolution; ++x) {
+        for (auto y = 0u; y < kResolution; ++y) {
+            auto i = kResolution * y + x;
+            auto j = kResolution * (kResolution - 1 - y) + x;
+
+            if (result[i].shape_id != RR_INVALID_ID) {
+                imgdata[3 * j] = (std::uint8_t)(200u * result[i].uv[0]);
+                imgdata[3 * j + 1] = (std::uint8_t)(200u * result[i].uv[1]);
+                imgdata[3 * j + 2] = 200u;
+            }
+        }
+    }
+
+    stbi_write_jpg("Sponza.jpg", kResolution, kResolution, 3, &imgdata[0], 10);
 }
 
