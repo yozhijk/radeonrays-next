@@ -54,11 +54,11 @@ float mymax3(float a, float b, float c) {
 	return max(c, max(a,b));
 }
 
-inline float fast_intersect_triangle(Ray r, vec3 v1, vec3 v2, vec3 v3, float t_max) {
+float fast_intersect_triangle(Ray r, vec3 v1, vec3 v2, vec3 v3, float t_max) {
     vec3 e1 = v2 - v1;
     vec3 e2 = v3 - v1;
     vec3 s1 = cross(r.direction, e2);
-	float invd = 1.0 / dot(s1, e1);
+    float invd = 1.0 / dot(s1, e1);
     vec3 d = r.origin - v1;
     float b1 = dot(d, s1) * invd;
     vec3 s2 = cross(d, e1);
@@ -87,15 +87,19 @@ vec2 fast_intersect_aabb(
     return vec2(t0, t1);
 }
 
+float copysign (float a, float b) {
+	return sign(b) >= 0.f ? a : -a;
+}
+
 vec3 safe_invdir(vec3 d) {
     float dirx = d.x;
     float diry = d.y;
     float dirz = d.z;
-    float ooeps = 1e-8;
+    float ooeps = 1e-5;
     vec3 invdir;
-    invdir.x = 1.0 / (abs(dirx) > ooeps ? dirx : ooeps * sign(dirx));
-    invdir.y = 1.0 / (abs(diry) > ooeps ? diry : ooeps * sign(diry));
-    invdir.z = 1.0 / (abs(dirz) > ooeps ? dirz : ooeps * sign(dirz));
+    invdir.x = 1.0 / (abs(dirx) > ooeps ? dirx : copysign(ooeps, dirx));
+    invdir.y = 1.0 / (abs(diry) > ooeps ? diry : copysign(ooeps, diry));
+    invdir.z = 1.0 / (abs(dirz) > ooeps ? dirz : copysign(ooeps, dirz));
     return invdir;
 }
 

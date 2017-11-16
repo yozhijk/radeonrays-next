@@ -229,53 +229,53 @@ TEST_F(BvhTest, CrytekSponza) {
     CleanUp();
 }
 
-TEST_F(BvhTest, Kitchen) {
-    using namespace std::chrono;
-    LoadScene(KITCHEN);
-    auto start = high_resolution_clock::now();
-    ASSERT_NO_THROW(bvh.Build(world.cbegin(), world.cend()));
-    auto delta = high_resolution_clock::now() - start;
-    auto delta_in_ms = duration_cast<milliseconds>(delta).count();
-
-#ifndef _DEBUG
-    std::size_t num_primitives = 0;
-    for (auto& iter = world.cbegin(); iter != world.cend(); ++iter) {
-        num_primitives += static_cast<RadeonRays::Mesh const*>(*iter)->num_faces();
-    }
-
-    std::cout << "Num primitives: " << num_primitives << "\n";
-    std::cout << "Time spent: " << delta_in_ms << " ms.\n";
-    std::cout << "Throughput: " << (float)num_primitives / (delta_in_ms / 1000.f) / 1000000.f << " Mprims/s.\n";
-#endif
-
-    std::stack<std::uint32_t> stack;
-    stack.push(0u);
-
-    while (!stack.empty()) {
-        auto node = bvh.GetNode(stack.top());
-        stack.pop();
-
-        if (BvhNodeTraits::IsInternal(*node)) {
-            for (auto i = 0u; i < 2u; ++i) {
-                auto child = bvh.GetNode(BvhNodeTraits::GetChildIndex(*node, i));
-
-                if (BvhNodeTraits::IsInternal(*child)) {
-                    ASSERT_TRUE(RadeonRays::contains(node->bounds, child->bounds));
-                }
-                else {
-                    auto mesh = child->mesh;
-                    auto face_index = child->face_index;
-                    auto vertices = mesh->GetFaceVertexData(face_index);
-
-                    for (auto& v : vertices) {
-                        ASSERT_TRUE(RadeonRays::contains(node->bounds, v));
-                    }
-                }
-            }
-        }
-    }
-
-    CleanUp();
-}
+//TEST_F(BvhTest, Kitchen) {
+//    using namespace std::chrono;
+//    LoadScene(KITCHEN);
+//    auto start = high_resolution_clock::now();
+//    ASSERT_NO_THROW(bvh.Build(world.cbegin(), world.cend()));
+//    auto delta = high_resolution_clock::now() - start;
+//    auto delta_in_ms = duration_cast<milliseconds>(delta).count();
+//
+//#ifndef _DEBUG
+//    std::size_t num_primitives = 0;
+//    for (auto& iter = world.cbegin(); iter != world.cend(); ++iter) {
+//        num_primitives += static_cast<RadeonRays::Mesh const*>(*iter)->num_faces();
+//    }
+//
+//    std::cout << "Num primitives: " << num_primitives << "\n";
+//    std::cout << "Time spent: " << delta_in_ms << " ms.\n";
+//    std::cout << "Throughput: " << (float)num_primitives / (delta_in_ms / 1000.f) / 1000000.f << " Mprims/s.\n";
+//#endif
+//
+//    std::stack<std::uint32_t> stack;
+//    stack.push(0u);
+//
+//    while (!stack.empty()) {
+//        auto node = bvh.GetNode(stack.top());
+//        stack.pop();
+//
+//        if (BvhNodeTraits::IsInternal(*node)) {
+//            for (auto i = 0u; i < 2u; ++i) {
+//                auto child = bvh.GetNode(BvhNodeTraits::GetChildIndex(*node, i));
+//
+//                if (BvhNodeTraits::IsInternal(*child)) {
+//                    ASSERT_TRUE(RadeonRays::contains(node->bounds, child->bounds));
+//                }
+//                else {
+//                    auto mesh = child->mesh;
+//                    auto face_index = child->face_index;
+//                    auto vertices = mesh->GetFaceVertexData(face_index);
+//
+//                    for (auto& v : vertices) {
+//                        ASSERT_TRUE(RadeonRays::contains(node->bounds, v));
+//                    }
+//                }
+//            }
+//        }
+//    }
+//
+//    CleanUp();
+//}
 
 

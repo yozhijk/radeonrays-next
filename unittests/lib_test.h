@@ -277,7 +277,7 @@ TEST_F(LibTest, Init) {
 }
 
 void LibTest::TraceRays(std::vector<Ray> const& data, std::vector<Hit>& result) {
-    auto num_rays = data.size();
+    auto num_rays = static_cast<std::uint32_t>(data.size());
     // Allocate rays and hits buffer
     auto rays_staging = m_staging_mgr->CreateBuffer(
         num_rays * sizeof(Ray),
@@ -302,7 +302,7 @@ void LibTest::TraceRays(std::vector<Ray> const& data, std::vector<Hit>& result) 
             rays_staging.size));
     ASSERT_NE(ptr, nullptr);
 
-    for (int i = 0; i < num_rays; ++i) {
+    for (auto i = 0u; i < num_rays; ++i) {
         ptr[i] = data[i];
     }
 
@@ -409,7 +409,7 @@ void LibTest::TraceRays(std::vector<Ray> const& data, std::vector<Hit>& result) 
             true,
             std::numeric_limits<std::uint32_t>::max());
         auto delta = high_resolution_clock::now() - start;
-        float ms = duration_cast<milliseconds>(delta).count();
+        auto ms = static_cast<float>(duration_cast<milliseconds>(delta).count());
         std::cout << "Ray query time " << ms << "ms\n";
         device_.resetFences(fence);
     }
@@ -482,7 +482,7 @@ void LibTest::TraceRays(std::vector<Ray> const& data, std::vector<Hit>& result) 
         device_.invalidateMappedMemoryRanges(mapped_range);
         ASSERT_NE(ptr, nullptr);
 
-        for (int i = 0; i < num_rays; ++i) {
+        for (auto i = 0u; i < num_rays; ++i) {
             result[i] = ptr[i];
         }
 
