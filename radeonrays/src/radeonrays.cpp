@@ -26,6 +26,7 @@ struct Instance {
     std::vector<vk::DescriptorSet> descriptor_sets_;
     VulkanMemoryManager::Buffer staging_bvh_buffer_;
     VulkanMemoryManager::Buffer local_bvh_buffer_;
+    VulkanMemoryManager::Buffer local_stack_buffer_;
 
     World world_;
     Bvh<BVHNode, BVHNodeTraits> bvh_;
@@ -59,7 +60,7 @@ static void InitVulkan(
             dev,
             physical_device,
             vk::MemoryPropertyFlagBits::eDeviceLocal,
-            128 * 1024 * 1024));
+            512 * 1024 * 1024));
 
     // Create pipeline cache
     vk::PipelineCacheCreateInfo cache_create_info;
@@ -82,7 +83,8 @@ static void InitVulkan(
     // - Ray buffer 
     // - Hit buffer 
     // - BVH buffer
-    vk::DescriptorSetLayoutBinding layout_binding[3];
+    // - Stack buffer
+    vk::DescriptorSetLayoutBinding layout_binding[4];
     layout_binding[0]
         .setBinding(0)
         .setDescriptorCount(1)
@@ -98,11 +100,16 @@ static void InitVulkan(
         .setDescriptorCount(1)
         .setDescriptorType(vk::DescriptorType::eStorageBuffer)
         .setStageFlags(vk::ShaderStageFlagBits::eCompute);
+    layout_binding[3]
+        .setBinding(3)
+        .setDescriptorCount(1)
+        .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+        .setStageFlags(vk::ShaderStageFlagBits::eCompute);
 
     // Create descriptor set layout
     vk::DescriptorSetLayoutCreateInfo descriptor_set_layout_create_info;
     descriptor_set_layout_create_info
-        .setBindingCount(3)
+        .setBindingCount(4)
         .setPBindings(layout_binding);
     instance->descriptor_set_layout_
         = dev.createDescriptorSetLayout(descriptor_set_layout_create_info);
@@ -148,6 +155,12 @@ static void InitVulkan(
         instance->device_.createComputePipeline(
             instance->pipeline_cache_,
             pipeline_create_info);
+
+    instance->local_stack_buffer_ =
+        instance->local_memory_mgr_->CreateBuffer(
+            1024u * 1024u * 32u * sizeof(std::uint32_t),
+            vk::BufferUsageFlagBits::eStorageBuffer
+        );
 }
 
 
@@ -188,7 +201,7 @@ rr_status rrIntersect(
     auto& dev = instance->device_;
 
     // Update descriptor sets
-    vk::DescriptorBufferInfo desc_buffer_info[3];
+    vk::DescriptorBufferInfo desc_buffer_info[4];
     desc_buffer_info[0]
         .setBuffer(ray_buffer)
         .setOffset(0)
@@ -201,10 +214,14 @@ rr_status rrIntersect(
         .setBuffer(instance->local_bvh_buffer_.buffer)
         .setOffset(0)
         .setRange(instance->local_bvh_buffer_.size);
+    desc_buffer_info[3]
+        .setBuffer(instance->local_stack_buffer_.buffer)
+        .setOffset(0)
+        .setRange(instance->local_stack_buffer_.size);
 
     vk::WriteDescriptorSet desc_writes;
     desc_writes
-        .setDescriptorCount(3)
+        .setDescriptorCount(4)
         .setDescriptorType(vk::DescriptorType::eStorageBuffer)
         .setDstSet(instance->descriptor_sets_[0])
         .setDstBinding(0)
@@ -248,7 +265,7 @@ rr_status rrIntersect(
         &N);
 
     // Dispatch intersection shader
-    auto num_groups = (num_rays + 255) / 256;
+    auto num_groups = (num_rays + 63) / 64;
     cmd_buffers[0].dispatch(num_groups, 1, 1);
 
     // End command buffer
@@ -278,6 +295,8 @@ rr_status rrShutdownInstance(rr_instance inst) {
         instance->device_.destroyBuffer(instance->local_bvh_buffer_.buffer);
         instance->device_.destroyBuffer(instance->staging_bvh_buffer_.buffer);
     }
+
+    instance->device_.destroyBuffer(instance->local_stack_buffer_.buffer);
 
     ShutdownVulkan(instance);
 

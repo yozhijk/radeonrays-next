@@ -1,12 +1,15 @@
 #version 450
 #define INVALID_ADDR 0xffffffffu
 #define INTERNAL_NODE(node)((node).addr_left!=INVALID_ADDR)
+#define GROUP_SIZE 64
+#define STACK_SIZE 32
+#define LDS_STACK_SIZE 16
 
 struct Ray {
-	vec3 direction;
-	float time;
-	vec3 origin;
-	float max_t;
+  vec3 direction;
+  float time;
+  vec3 origin;
+  float max_t;
 };
 
 struct Hit {
@@ -16,42 +19,47 @@ struct Hit {
 };
 
 struct BVHNode {
-	vec3 aabb_left_min_or_v0;
-	uint addr_left;
-	vec3 aabb_left_max_or_v1;
-	uint mesh_id;
-	vec3 aabb_right_min_or_v2;
-	uint addr_right;
-	vec3 aabb_right_max;
-	uint prim_id;
+  vec3 aabb_left_min_or_v0;
+  uint addr_left;
+  vec3 aabb_left_max_or_v1;
+  uint mesh_id;
+  vec3 aabb_right_min_or_v2;
+  uint addr_right;
+  vec3 aabb_right_max;
+  uint prim_id;
 };
 
 layout(set = 0, binding = 0) buffer Rays {
-	Ray rays[];
+  Ray rays[];
 };
 
 layout(set = 0, binding = 1) buffer Hits {
-	Hit hits[];
+  Hit hits[];
 };
 
 layout(set = 0, binding = 2) buffer BVH {
-	BVHNode bvh[];
+  BVHNode bvh[];
 };
 
+layout(set = 0, binding = 3) buffer Stack {
+  uint stack[];
+};
 
 layout (push_constant) uniform PushConstants {
-	uint N;
+  uint N;
 };
 
-layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+layout (local_size_x = GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
+
+shared uint lds_stack[GROUP_SIZE * LDS_STACK_SIZE];
 
 
 float mymin3(float a, float b, float c) {
-	return min(c, min(a,b));
+  return min(c, min(a,b));
 }
 
 float mymax3(float a, float b, float c) {
-	return max(c, max(a,b));
+  return max(c, max(a,b));
 }
 
 float fast_intersect_triangle(Ray r, vec3 v1, vec3 v2, vec3 v3, float t_max) {
@@ -66,18 +74,18 @@ float fast_intersect_triangle(Ray r, vec3 v1, vec3 v2, vec3 v3, float t_max) {
     float temp = dot(e2, s2) * invd;
 
     if (b1 < 0.0 || b1 > 1.0 || 
-    	b2 < 0.0 || b1 + b2 > 1.0 || 
-    	temp < 0.0 || temp > t_max) {
+      b2 < 0.0 || b1 + b2 > 1.0 || 
+      temp < 0.0 || temp > t_max) {
         return t_max;
-    } else {
-        return temp;
-    }
+} else {
+    return temp;
+}
 }
 
 vec2 fast_intersect_aabb(
-	vec3 pmin, vec3 pmax,
-	vec3 invdir, vec3 oxinvdir,
-	float t_max) {
+   vec3 pmin, vec3 pmax,
+   vec3 invdir, vec3 oxinvdir,
+   float t_max) {
     vec3 f = fma(pmax, invdir, oxinvdir);
     vec3 n = fma(pmin, invdir, oxinvdir);
     vec3 tmax = max(f, n);
@@ -88,7 +96,7 @@ vec2 fast_intersect_aabb(
 }
 
 float copysign (float a, float b) {
-	return sign(b) >= 0.f ? a : -a;
+   return sign(b) >= 0.f ? a : -a;
 }
 
 vec3 safe_invdir(vec3 d) {
@@ -121,41 +129,44 @@ vec2 calculate_barycentrics(vec3 p, vec3 v1, vec3 v2, vec3 v3) {
 }
 
 void main() {
-	uint index = gl_GlobalInvocationID.x;
-	
-	if (index >= N) 
-		return;	
+    uint index = gl_GlobalInvocationID.x;
+    uint local_index = gl_LocalInvocationID.x;
 
-	Ray myRay = rays[index];
-	vec3 invDir = safe_invdir(myRay.direction);
-	vec3 oxInvDir = -myRay.origin * invDir;
+    if (index >= N) return;
 
-	float closest_t = myRay.max_t;
-	uint closest_addr = INVALID_ADDR;
+    Ray myRay = rays[index];
+    vec3 invDir = safe_invdir(myRay.direction);
+    vec3 oxInvDir = -myRay.origin * invDir;
 
-	uint stack[32];
-	uint sptr = 0;
+    float closest_t = myRay.max_t;
+    uint closest_addr = INVALID_ADDR;
 
-	stack[sptr++] = INVALID_ADDR;
-	uint addr = 0;
-	while (addr != INVALID_ADDR) {
-		BVHNode node = bvh[addr];
+    uint stack_bottom = STACK_SIZE * index; 
+    uint sptr = stack_bottom;
+    uint lds_stack_bottom = local_index * LDS_STACK_SIZE;
+    uint lds_sptr = lds_stack_bottom;
 
-		if (INTERNAL_NODE(node)) {
-			vec2 s0 = fast_intersect_aabb(
-				node.aabb_left_min_or_v0,
-				node.aabb_left_max_or_v1,
-				invDir, oxInvDir, closest_t);
+    lds_stack[lds_sptr++] = INVALID_ADDR;
+    uint addr = 0;
+
+    while (addr != INVALID_ADDR) {
+        BVHNode node = bvh[addr];
+
+        if (INTERNAL_NODE(node)) {
+            vec2 s0 = fast_intersect_aabb(
+                node.aabb_left_min_or_v0,
+                node.aabb_left_max_or_v1,
+                invDir, oxInvDir, closest_t);
             vec2 s1 = fast_intersect_aabb(
-				node.aabb_right_min_or_v2,
-				node.aabb_right_max,
-				invDir, oxInvDir, closest_t);
+                node.aabb_right_min_or_v2,
+                node.aabb_right_max,
+                invDir, oxInvDir, closest_t);
 
-        	bool traverse_c0 = (s0.x <= s0.y);
-        	bool traverse_c1 = (s1.x <= s1.y);
-        	bool c1first = traverse_c1 && (s0.x > s1.x);
+            bool traverse_c0 = (s0.x <= s0.y);
+            bool traverse_c1 = (s1.x <= s1.y);
+            bool c1first = traverse_c1 && (s0.x > s1.x);
 
-        	if (traverse_c0 || traverse_c1) {
+            if (traverse_c0 || traverse_c1) {
                 uint deferred = INVALID_ADDR;
 
                 if (c1first || !traverse_c0) {
@@ -167,45 +178,63 @@ void main() {
                 }
 
                 if (traverse_c0 && traverse_c1) {
-                    stack[sptr++] = deferred;
-                }
+                    if (lds_sptr - lds_stack_bottom >= LDS_STACK_SIZE) {
+                        for (int i = 1; i < LDS_STACK_SIZE; ++i) {
+                            stack[sptr + i] = lds_stack[lds_stack_bottom + i];
+                        }
 
+                        sptr += LDS_STACK_SIZE;
+                        lds_sptr = lds_stack_bottom + 1;
+                    }
+
+                    lds_stack[lds_sptr++] = deferred;
+                }
                 continue;
             }
 
         } else {
-        	float t = fast_intersect_triangle(
-        		myRay,
-        		node.aabb_left_min_or_v0,
-        		node.aabb_left_max_or_v1,
-        		node.aabb_right_min_or_v2,
-        		closest_t);
+            float t = fast_intersect_triangle(
+                myRay,
+                node.aabb_left_min_or_v0,
+                node.aabb_left_max_or_v1,
+                node.aabb_right_min_or_v2,
+                closest_t);
 
-        	if (t < closest_t) {
-        		closest_t = t;
-        		closest_addr = addr;
-        	}
-		}
+            if (t < closest_t) {
+                closest_t = t;
+                closest_addr = addr;
+            }
+        }
 
-		addr = stack[--sptr];
-	}
+        addr = lds_stack[--lds_sptr];
 
-	if (closest_addr != INVALID_ADDR) {
-		BVHNode node = bvh[closest_addr];
-		vec3 p = myRay.origin + closest_t * myRay.direction;
+        if (addr == INVALID_ADDR && sptr > stack_bottom) {
+            sptr -= LDS_STACK_SIZE;
+            for (int i = 1; i < LDS_STACK_SIZE; ++i) {
+                lds_stack[lds_stack_bottom + i] = stack[sptr + i];
+            }
 
-		Hit hit;
-		hit.uv = calculate_barycentrics(
-			p, 
-			node.aabb_left_min_or_v0,
-			node.aabb_left_max_or_v1,
-			node.aabb_right_min_or_v2
-			);
+            lds_sptr = lds_stack_bottom + LDS_STACK_SIZE - 1;
+            addr = lds_stack[lds_sptr];
+        }
+    }
 
-		hit.prim_id = node.prim_id;
-		hit.shape_id = node.mesh_id;
-		hits[index] = hit;
-	} else {
-		hits[index].shape_id = INVALID_ADDR;
-	}
+    if (closest_addr != INVALID_ADDR) {
+        BVHNode node = bvh[closest_addr];
+        vec3 p = myRay.origin + closest_t * myRay.direction;
+
+        Hit hit;
+        hit.uv = calculate_barycentrics(
+            p, 
+            node.aabb_left_min_or_v0,
+            node.aabb_left_max_or_v1,
+            node.aabb_right_min_or_v2
+        );
+
+        hit.prim_id = node.prim_id;
+        hit.shape_id = node.mesh_id;
+        hits[index] = hit;
+    } else {
+        hits[index].shape_id = INVALID_ADDR;
+    }
 }
