@@ -1,9 +1,9 @@
 #version 450
 #define INVALID_ADDR 0xffffffffu
 #define INTERNAL_NODE(node)((node).addr_left!=INVALID_ADDR)
-#define GROUP_SIZE 128
-#define STACK_SIZE 32
-#define LDS_STACK_SIZE 16
+#define GROUP_SIZE 64
+#define STACK_SIZE 16
+#define LDS_STACK_SIZE 8
 
 struct Ray {
   vec3 direction;
@@ -77,9 +77,9 @@ float fast_intersect_triangle(Ray r, vec3 v1, vec3 v2, vec3 v3, float t_max) {
       b2 < 0.0 || b1 + b2 > 1.0 || 
       temp < 0.0 || temp > t_max) {
         return t_max;
-} else {
-    return temp;
-}
+    } else {
+        return temp;
+    }
 }
 
 vec2 fast_intersect_aabb(
@@ -190,7 +190,6 @@ void main() {
 
                 continue;
             }
-
         } else {
             float t = fast_intersect_triangle(
                 myRay,

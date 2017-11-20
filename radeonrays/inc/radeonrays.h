@@ -63,10 +63,15 @@ extern "C" {
     RR_API rr_status rrCommit(rr_instance instance, VkCommandBuffer* out_command_buffer);
     RR_API rr_status rrDeleteShape(rr_instance instance, rr_shape shape);
 
-    RR_API rr_status rrIntersect(
+    RR_API rr_status rrSetBuffers(
         rr_instance instance,
         VkBuffer ray_buffer,
         VkBuffer hit_buffer,
+        uint32_t num_rays
+    );
+
+    RR_API rr_status rrIntersect(
+        rr_instance instance,
         uint32_t num_rays,
         VkCommandBuffer* out_command_buffer
     );

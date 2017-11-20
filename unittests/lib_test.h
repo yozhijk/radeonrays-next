@@ -155,14 +155,22 @@ public:
             }
         }
 
+        char* extensions[] = { "VK_AMD_shader_ballot", "VK_EXT_shader_subgroup_ballot" };
+
         float default_priority = 1.f;
         auto queue_create_info = vk::DeviceQueueCreateInfo()
             .setQueueFamilyIndex(idx)
             .setQueueCount(1)
             .setPQueuePriorities(&default_priority);
+        auto enabled_features = vk::PhysicalDeviceFeatures{};
+        enabled_features.shaderInt64 = true;
         auto device_create_info = vk::DeviceCreateInfo()
             .setQueueCreateInfoCount(1)
-            .setPQueueCreateInfos(&queue_create_info);
+            .setPQueueCreateInfos(&queue_create_info)
+            .setEnabledExtensionCount(2)
+            .setPpEnabledExtensionNames(extensions)
+            .setPEnabledFeatures(&enabled_features);
+
         device_ = physical_device_.createDevice(device_create_info);
         queue_ = device_.getQueue(idx, 0);
 
@@ -384,34 +392,40 @@ void LibTest::TraceRays(std::vector<Ray> const& data, std::vector<Hit>& result) 
     }
 
     // Execute intersection query
+    std::vector<vk::CommandBuffer> isect_cmd_buffers(100);
     {
-        device_.waitIdle();
-        using namespace std::chrono;
-        auto status = rrIntersect(
+        rrSetBuffers(
             rr_instance_,
             rays_local.buffer,
             hits_local.buffer,
-            num_rays,
-            &temp1);
+            num_rays);
 
-        ASSERT_EQ(status, RR_SUCCESS);
-        ASSERT_NE(temp1, nullptr);
-        vk::CommandBuffer rt_buffer(temp1);
-
+        device_.waitIdle();
+        using namespace std::chrono;
         auto start = high_resolution_clock::now();
-        vk::SubmitInfo queue_submit_info;
-        queue_submit_info
-            .setCommandBufferCount(1)
-            .setPCommandBuffers(&rt_buffer);
-        queue_.submit(queue_submit_info, fence);
-        device_.waitForFences(
-            fence,
-            true,
-            std::numeric_limits<std::uint32_t>::max());
+
+        for (int i = 0; i < 100; ++i) {
+            auto status = rrIntersect(
+                rr_instance_,
+                num_rays,
+                &temp1);
+
+            ASSERT_EQ(status, RR_SUCCESS);
+            ASSERT_NE(temp1, nullptr);
+            isect_cmd_buffers[i] = vk::CommandBuffer(temp1);
+
+            vk::SubmitInfo queue_submit_info;
+            queue_submit_info
+                .setCommandBufferCount(1)
+                .setPCommandBuffers(&isect_cmd_buffers[i]);
+            queue_.submit(queue_submit_info, nullptr);
+        }
+        device_.waitIdle();
+
         auto delta = high_resolution_clock::now() - start;
         auto ms = static_cast<float>(duration_cast<milliseconds>(delta).count());
-        std::cout << "Ray query time: " << ms << "ms\n";
-        std::cout << "Througput: " << num_rays / (ms / 1000.f) / 1000000.f << " MRays/s\n";
+        std::cout << "Ray query time: " << ms / 100.f << "ms\n";
+        std::cout << "Througput: " << num_rays / ((ms / 100.f ) / 1000.f) / 1000000.f << " MRays/s\n";
         device_.resetFences(fence);
     }
 
@@ -492,7 +506,10 @@ void LibTest::TraceRays(std::vector<Ray> const& data, std::vector<Hit>& result) 
 
     device_.destroyFence(fence);
     device_.freeCommandBuffers(command_pool_, vk::CommandBuffer{ temp0 });
-    device_.freeCommandBuffers(command_pool_, vk::CommandBuffer{ temp1 });
+
+    for(auto& cb: isect_cmd_buffers)
+        device_.freeCommandBuffers(command_pool_, cb);
+
     device_.freeCommandBuffers(command_pool_, cmd_buffers);
     device_.destroyBuffer(rays_staging.buffer);
     device_.destroyBuffer(rays_local.buffer);
@@ -543,7 +560,7 @@ TEST_F(LibTest, CornellBox) {
         }
     }
 
-    stbi_write_jpg("CornellBox.jpg", kResolution, kResolution, 3, &imgdata[0], 10);
+    stbi_write_jpg("CornellBox.jpg", kResolution, kResolution, 3, &imgdata[0], 100);
 }
 
 TEST_F(LibTest, Sponza) {
@@ -589,6 +606,6 @@ TEST_F(LibTest, Sponza) {
         }
     }
 
-    stbi_write_jpg("Sponza.jpg", kResolution, kResolution, 3, &imgdata[0], 10);
+    stbi_write_jpg("Sponza.jpg", kResolution, kResolution, 3, &imgdata[0], 100);
 }
 

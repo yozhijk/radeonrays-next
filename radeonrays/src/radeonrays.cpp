@@ -193,40 +193,10 @@ rr_status rrInitInstance(
 
 rr_status rrIntersect(
     rr_instance inst,
-    VkBuffer ray_buffer,
-    VkBuffer hit_buffer,
     uint32_t num_rays,
     VkCommandBuffer* out_command_buffer) {
     auto instance = reinterpret_cast<Instance*>(inst);
     auto& dev = instance->device_;
-
-    // Update descriptor sets
-    vk::DescriptorBufferInfo desc_buffer_info[4];
-    desc_buffer_info[0]
-        .setBuffer(ray_buffer)
-        .setOffset(0)
-        .setRange(num_rays * sizeof(Ray));
-    desc_buffer_info[1]
-        .setBuffer(hit_buffer)
-        .setOffset(0)
-        .setRange(num_rays * sizeof(Hit));
-    desc_buffer_info[2]
-        .setBuffer(instance->local_bvh_buffer_.buffer)
-        .setOffset(0)
-        .setRange(instance->local_bvh_buffer_.size);
-    desc_buffer_info[3]
-        .setBuffer(instance->local_stack_buffer_.buffer)
-        .setOffset(0)
-        .setRange(instance->local_stack_buffer_.size);
-
-    vk::WriteDescriptorSet desc_writes;
-    desc_writes
-        .setDescriptorCount(4)
-        .setDescriptorType(vk::DescriptorType::eStorageBuffer)
-        .setDstSet(instance->descriptor_sets_[0])
-        .setDstBinding(0)
-        .setPBufferInfo(&desc_buffer_info[0]);
-    dev.updateDescriptorSets(desc_writes, nullptr);
 
     // Allocate command buffer
     vk::CommandBufferAllocateInfo cmdbuffer_alloc_info;
@@ -265,7 +235,7 @@ rr_status rrIntersect(
         &N);
 
     // Dispatch intersection shader
-    auto num_groups = (num_rays + 127) / 128;
+    auto num_groups = (num_rays + 63) / 64;
     cmd_buffers[0].dispatch(num_groups, 1, 1);
 
     // End command buffer
@@ -487,6 +457,49 @@ rr_status rrDeleteShape(rr_instance inst, rr_shape s) {
     auto shape = reinterpret_cast<Shape*>(s);
 
     delete shape;
+
+    return RR_SUCCESS;
+}
+
+rr_status rrSetBuffers(
+    rr_instance inst,
+    VkBuffer ray_buffer,
+    VkBuffer hit_buffer,
+    uint32_t num_rays
+) {
+    if (!inst) {
+        return RR_ERROR_INVALID_VALUE;
+    }
+
+    auto instance = reinterpret_cast<Instance*>(inst);
+
+    // Update descriptor sets
+    vk::DescriptorBufferInfo desc_buffer_info[4];
+    desc_buffer_info[0]
+        .setBuffer(ray_buffer)
+        .setOffset(0)
+        .setRange(num_rays * sizeof(Ray));
+    desc_buffer_info[1]
+        .setBuffer(hit_buffer)
+        .setOffset(0)
+        .setRange(num_rays * sizeof(Hit));
+    desc_buffer_info[2]
+        .setBuffer(instance->local_bvh_buffer_.buffer)
+        .setOffset(0)
+        .setRange(instance->local_bvh_buffer_.size);
+    desc_buffer_info[3]
+        .setBuffer(instance->local_stack_buffer_.buffer)
+        .setOffset(0)
+        .setRange(instance->local_stack_buffer_.size);
+
+    vk::WriteDescriptorSet desc_writes;
+    desc_writes
+        .setDescriptorCount(4)
+        .setDescriptorType(vk::DescriptorType::eStorageBuffer)
+        .setDstSet(instance->descriptor_sets_[0])
+        .setDstBinding(0)
+        .setPBufferInfo(&desc_buffer_info[0]);
+    instance->device_.updateDescriptorSets(desc_writes, nullptr);
 
     return RR_SUCCESS;
 }
