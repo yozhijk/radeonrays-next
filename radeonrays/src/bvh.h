@@ -662,10 +662,10 @@ namespace RadeonRays {
                 auto idx3 = refs[i + 3];
 
                 auto c = _mm_set_ps(
-                    aabb_centroid[idx0][axis],
-                    aabb_centroid[idx1][axis],
+                    aabb_centroid[idx3][axis],
                     aabb_centroid[idx2][axis],
-                    aabb_centroid[idx3][axis]);
+                    aabb_centroid[idx1][axis],
+                    aabb_centroid[idx0][axis]);
 
                 auto bin_idx = _mm_mul_ps(
                     _mm_mul_ps(

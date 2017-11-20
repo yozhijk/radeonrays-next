@@ -265,7 +265,7 @@ rr_status rrIntersect(
         &N);
 
     // Dispatch intersection shader
-    auto num_groups = (num_rays + 63) / 64;
+    auto num_groups = (num_rays + 127) / 128;
     cmd_buffers[0].dispatch(num_groups, 1, 1);
 
     // End command buffer

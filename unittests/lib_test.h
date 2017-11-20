@@ -410,7 +410,8 @@ void LibTest::TraceRays(std::vector<Ray> const& data, std::vector<Hit>& result) 
             std::numeric_limits<std::uint32_t>::max());
         auto delta = high_resolution_clock::now() - start;
         auto ms = static_cast<float>(duration_cast<milliseconds>(delta).count());
-        std::cout << "Ray query time " << ms << "ms\n";
+        std::cout << "Ray query time: " << ms << "ms\n";
+        std::cout << "Througput: " << num_rays / (ms / 1000.f) / 1000000.f << " MRays/s\n";
         device_.resetFences(fence);
     }
 
