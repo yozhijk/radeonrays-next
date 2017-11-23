@@ -58,4 +58,18 @@ namespace RadeonRays {
         _mm_store_ps(temp, v);
         return temp[index];
     }
+
+    inline
+    bool aabb_contains_point(
+        float const* aabb_min,
+        float const* aabb_max,
+        float const* point) {
+
+        return point[0] >= aabb_min[0] &&
+            point[0] <= aabb_max[0] &&
+            point[1] >= aabb_min[1] &&
+            point[1] <= aabb_max[1] &&
+            point[2] >= aabb_min[2] &&
+            point[2] <= aabb_max[2];
+    }
 }

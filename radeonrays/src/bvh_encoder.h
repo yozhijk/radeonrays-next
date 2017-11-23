@@ -51,7 +51,7 @@ namespace RadeonRays {
         // Max triangles per leaf
         static std::uint32_t constexpr kMaxLeafPrimitives = 1u;
         // Threshold number of primitives to disable SAH split
-        static std::uint32_t constexpr kMinSAHPrimitives = 8u;
+        static std::uint32_t constexpr kMinSAHPrimitives = 32u;
         // Traversal vs intersection cost ratio
         static std::uint32_t constexpr kTraversalCost = 10u;
 

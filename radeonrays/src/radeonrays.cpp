@@ -11,6 +11,9 @@
 #include "utils.h"
 #include "vk_utils.h"
 
+#include "qbvh_encoder.h"
+#define FP16
+
 using namespace RadeonRays;
 
 struct Instance {
@@ -138,8 +141,14 @@ static void InitVulkan(
         dev.createPipelineLayout(pipeline_layout_create_info);
 
     // Load intersection shader module
+
+#ifdef FP16
+    instance->isect_shader_module_ =
+        LoadShaderModule(dev, "../../shaders/isect_fp16.comp.spv");
+#else
     instance->isect_shader_module_ =
         LoadShaderModule(dev, "../../shaders/isect.comp.spv");
+#endif
 
     // Create pipeline 
     vk::PipelineShaderStageCreateInfo shader_stage_create_info;
@@ -352,8 +361,14 @@ rr_status rrCommit(rr_instance inst, VkCommandBuffer* out_command_buffer) {
     instance->bvh_.Build(instance->world_.cbegin(), instance->world_.cend());
     BVHNodeTraits::PropagateBounds(instance->bvh_);
 
+#ifdef FP16
+    RadeonRays::QBvh qbvh = qbvh.Create(instance->bvh_);
+    auto bvh_size_in_bytes
+        = qbvh.nodes_.size() * sizeof(QBVHNode);
+#else
     auto bvh_size_in_bytes 
         = instance->bvh_.num_nodes() * sizeof(BVHNode);
+#endif
 
 #ifdef TEST
     std::cout << "BVH size is " << bvh_size_in_bytes / 1024.f / 1024.f << "MB";
@@ -380,6 +395,24 @@ rr_status rrCommit(rr_instance inst, VkCommandBuffer* out_command_buffer) {
     }
 
     // Map staging buffer
+
+#ifdef FP16
+    auto ptr = reinterpret_cast<QBVHNode*>(
+        instance->device_.mapMemory(
+            instance->staging_bvh_buffer_.memory,
+            instance->staging_bvh_buffer_.offset,
+            instance->staging_bvh_buffer_.size));
+
+    auto mapped_range = vk::MappedMemoryRange{}
+        .setMemory(instance->staging_bvh_buffer_.memory)
+        .setOffset(instance->staging_bvh_buffer_.offset)
+        .setSize(instance->staging_bvh_buffer_.size);
+
+    // Copy BVH data
+    for (auto i = 0u; i < qbvh.nodes_.size(); ++i) {
+        ptr[i] = qbvh.nodes_[i];
+    }
+#else
     auto ptr = reinterpret_cast<BVHNode*>(
         instance->device_.mapMemory(
             instance->staging_bvh_buffer_.memory,
@@ -395,6 +428,7 @@ rr_status rrCommit(rr_instance inst, VkCommandBuffer* out_command_buffer) {
     for (auto i = 0u; i < instance->bvh_.num_nodes(); ++i) {
         ptr[i] = *instance->bvh_.GetNode(i);
     }
+#endif
 
     instance->device_.flushMappedMemoryRanges(mapped_range);
     instance->device_.unmapMemory(instance->staging_bvh_buffer_.memory);

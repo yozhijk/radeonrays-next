@@ -618,7 +618,7 @@ namespace RadeonRays {
         ) {
             auto sah = std::numeric_limits<float>::max();
 
-            auto constexpr kNumBins = 16u;
+            auto constexpr kNumBins = 64u;
             __m128 bin_min[kNumBins];
             __m128 bin_max[kNumBins];
             std::uint32_t bin_count[kNumBins];

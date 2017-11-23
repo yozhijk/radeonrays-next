@@ -155,7 +155,7 @@ public:
             }
         }
 
-        char* extensions[] = { "VK_AMD_shader_ballot", "VK_EXT_shader_subgroup_ballot" };
+        char* extensions[] = { "VK_AMD_shader_ballot", "VK_EXT_shader_subgroup_ballot", "VK_AMD_gpu_shader_half_float" };
 
         float default_priority = 1.f;
         auto queue_create_info = vk::DeviceQueueCreateInfo()
@@ -167,7 +167,7 @@ public:
         auto device_create_info = vk::DeviceCreateInfo()
             .setQueueCreateInfoCount(1)
             .setPQueueCreateInfos(&queue_create_info)
-            .setEnabledExtensionCount(2)
+            .setEnabledExtensionCount(3)
             .setPpEnabledExtensionNames(extensions)
             .setPEnabledFeatures(&enabled_features);
 
@@ -607,5 +607,49 @@ TEST_F(LibTest, Sponza) {
     }
 
     stbi_write_jpg("Sponza.jpg", kResolution, kResolution, 3, &imgdata[0], 100);
+}
+
+TEST_F(LibTest, SponzaRandom) {
+
+    LoadScene(CRYTEK_SPONZA);
+    auto constexpr kResolution = 1024;
+
+    std::vector<Ray> data(kResolution * kResolution);
+    std::vector<Hit> result(kResolution * kResolution);
+
+    for (int x = 0; x < kResolution; ++x) {
+        for (int y = 0; y < kResolution; ++y) {
+            auto i = kResolution * y + x;
+
+            data[i].origin[0] = (float)rand() / RAND_MAX * 200.f - 100.f;
+            data[i].origin[1] = (float)rand() / RAND_MAX * 200.f;
+            data[i].origin[2] = (float)rand() / RAND_MAX * 200.f - 100.f;
+
+            data[i].direction[0] = (float)rand() / RAND_MAX;
+            data[i].direction[1] = (float)rand() / RAND_MAX;
+            data[i].direction[2] = (float)rand() / RAND_MAX;
+
+            data[i].max_t = 100000.f;
+        }
+    }
+
+    TraceRays(data, result);
+
+    std::vector<std::uint8_t> imgdata(kResolution * kResolution * 3);
+
+    std::fill(imgdata.begin(), imgdata.end(), 20u);
+
+    for (auto x = 0u; x < kResolution; ++x) {
+        for (auto y = 0u; y < kResolution; ++y) {
+            auto i = kResolution * y + x;
+            auto j = kResolution * (kResolution - 1 - y) + x;
+
+            if (result[i].shape_id != RR_INVALID_ID) {
+                imgdata[3 * j] = (std::uint8_t)(200u * result[i].uv[0]);
+                imgdata[3 * j + 1] = (std::uint8_t)(200u * result[i].uv[1]);
+                imgdata[3 * j + 2] = 200u;
+            }
+        }
+    }
 }
 

@@ -18,6 +18,7 @@ target_sources(RadeonRays PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/instance.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bvh.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bvh_encoder.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/qbvh_encoder.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bvh_utils.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/vk_mem_manager.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/vk_utils.h
