@@ -3,11 +3,10 @@
 
 #include <vector>
 
+#include "rr_instance.h"
 #include "vk_mem_manager.h"
-#include "world.h"
+
 #include "mesh.h"
-#include "bvh.h"
-#include "bvh_encoder.h"
 #include "utils.h"
 #include "vk_utils.h"
 
@@ -15,29 +14,6 @@
 //#define FP16
 
 using namespace RadeonRays;
-
-struct Instance {
-    // Vulkan entities
-    vk::Device device_ = nullptr;
-    vk::CommandPool command_pool_ = nullptr;
-    vk::PipelineCache pipeline_cache_ = nullptr;
-    vk::PipelineLayout pipeline_layout_ = nullptr;
-    vk::Pipeline intersect_pipeline_ = nullptr;
-    vk::DescriptorPool descriptor_pool_ = nullptr;
-    vk::DescriptorSetLayout descriptor_set_layout_ = nullptr;
-    vk::ShaderModule isect_shader_module_ = nullptr;
-    std::vector<vk::DescriptorSet> descriptor_sets_;
-    VulkanMemoryManager::Buffer staging_bvh_buffer_;
-    VulkanMemoryManager::Buffer local_bvh_buffer_;
-    VulkanMemoryManager::Buffer local_stack_buffer_;
-
-    World world_;
-    Bvh<BVHNode, BVHNodeTraits> bvh_;
-
-    // Staging & local memory managers
-    std::unique_ptr<VulkanMemoryManager> staging_memory_mgr_;
-    std::unique_ptr<VulkanMemoryManager> local_memory_mgr_;
-};
 
 
 static void InitVulkan(

@@ -40,7 +40,7 @@ THE SOFTWARE.
 #include "utils.h"
 #include "bvh_utils.h"
 
-#define PARALLEL_BUILD
+//#define PARALLEL_BUILD
 
 namespace RadeonRays {
 
@@ -405,7 +405,7 @@ namespace RadeonRays {
 #ifdef _DEBUG
 #ifdef TEST
             {
-                bbox left, right, parent;
+                _MM_ALIGN16 bbox left, right, parent;
                 _mm_store_ps(&left.pmin.x, lmin);
                 _mm_store_ps(&left.pmax.x, lmax);
                 _mm_store_ps(&right.pmin.x, rmin);
@@ -414,7 +414,10 @@ namespace RadeonRays {
                 _mm_store_ps(&parent.pmax.x, request.aabb_max);
 
                 assert(contains(parent, left));
-                assert(contains(parent, right));
+                if (!contains(parent, right)) {
+                    bool b = contains(parent, right);
+                    std::cout << "Fail\n";
+                }
             }
 #endif
 #endif

@@ -20,12 +20,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ********************************************************************/
 #pragma once
-
 #include <vulkan/vulkan.hpp>
 
 class VulkanMemoryManager {
 public:
-
     struct Buffer {
         vk::Buffer buffer = nullptr;
         vk::DeviceMemory memory = nullptr;

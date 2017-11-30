@@ -37,7 +37,7 @@ namespace RadeonRays
         Instance(Shape const* base_shape) noexcept
         : base_shape_(base_shape) {}
 
-        auto base_shape() const noexcept { return base_shape_;  }
+        auto base_shape() const noexcept { return base_shape_; }
         bool is_instance() const noexcept override { return true; }
 
         Instance(Instance const&) = default;
