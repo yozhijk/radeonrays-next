@@ -155,19 +155,32 @@ extern "C" {
         VkCommandBuffer* out_command_buffer
     );
 
+    // Create triangle mesh
     RR_API rr_status rrCreateTriangleMesh(
+        // API instance
         rr_instance instance,
+        // Vertex pointer
         float const* vertices,
+        // Number of vertices
         uint32_t num_vertices,
+        // Stride between two consecutive vertices
         uint32_t vertex_stride,
+        // Index pointer
         uint32_t const* indices,
+        // Stride between two consecutive triples of indices
         uint32_t index_stride,
+        // Number of trianles
         uint32_t num_faces,
+        // ID of a mesh (will be set in Hit structure)
         uint32_t id,
+        // Resulting shape
         rr_shape* out_shape
     );
 
-    RR_API rr_status rrShutdownInstance(rr_instance instance);
+    // Shutdown API instance
+    RR_API rr_status rrShutdownInstance(
+        // API instance
+        rr_instance instance);
 #ifdef __cplusplus
 }
 #endif
