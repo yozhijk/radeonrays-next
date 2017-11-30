@@ -495,7 +495,7 @@ rr_status rrDeleteShape(rr_instance inst, rr_shape s) {
     return RR_SUCCESS;
 }
 
-rr_status rrSetBuffers(
+rr_status rrBindBuffers(
     rr_instance inst,
     VkBuffer ray_buffer,
     VkBuffer hit_buffer,

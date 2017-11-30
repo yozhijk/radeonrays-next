@@ -167,8 +167,8 @@ public:
         auto device_create_info = vk::DeviceCreateInfo()
             .setQueueCreateInfoCount(1)
             .setPQueueCreateInfos(&queue_create_info)
-            .setEnabledExtensionCount(3)
-            .setPpEnabledExtensionNames(extensions)
+            //.setEnabledExtensionCount(3)
+            //.setPpEnabledExtensionNames(extensions)
             .setPEnabledFeatures(&enabled_features);
 
         device_ = physical_device_.createDevice(device_create_info);
@@ -394,7 +394,7 @@ void LibTest::TraceRays(std::vector<Ray> const& data, std::vector<Hit>& result) 
     // Execute intersection query
     std::vector<vk::CommandBuffer> isect_cmd_buffers(100);
     {
-        rrSetBuffers(
+        rrBindBuffers(
             rr_instance_,
             rays_local.buffer,
             hits_local.buffer,
