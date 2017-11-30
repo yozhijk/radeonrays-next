@@ -2,7 +2,7 @@
 #define INVALID_ADDR 0xffffffffu
 #define INTERNAL_NODE(node)((node).addr_left!=INVALID_ADDR)
 #define GROUP_SIZE 64
-#define STACK_SIZE 16
+#define STACK_SIZE 32
 #define LDS_STACK_SIZE 8
 
 struct Ray {

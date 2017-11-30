@@ -12,7 +12,7 @@
 #include "vk_utils.h"
 
 #include "qbvh_encoder.h"
-#define FP16
+//#define FP16
 
 using namespace RadeonRays;
 
@@ -366,7 +366,7 @@ rr_status rrCommit(rr_instance inst, VkCommandBuffer* out_command_buffer) {
     auto bvh_size_in_bytes
         = qbvh.nodes_.size() * sizeof(QBVHNode);
 #else
-    auto bvh_size_in_bytes 
+    auto bvh_size_in_bytes
         = instance->bvh_.num_nodes() * sizeof(BVHNode);
 #endif
 
