@@ -405,8 +405,9 @@ void LibTest::TraceRays(std::vector<Ray> const& data, std::vector<Hit>& result) 
         auto start = high_resolution_clock::now();
 
         for (int i = 0; i < 100; ++i) {
-            auto status = rrIntersect(
+            auto status = rrTraceRays(
                 rr_instance_,
+                RR_QUERY_INTERSECT,
                 num_rays,
                 &temp1);
 

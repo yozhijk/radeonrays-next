@@ -53,9 +53,14 @@ THE SOFTWARE.
 // Invalid index marker
 #define RR_INVALID_ID 0xffffffffu
 
+// Ray query type
+#define RR_QUERY_INTERSECT 1
+#define RR_QUERY_OCCLUDED 2
+
 // Data types
 typedef int rr_status;
 typedef int rr_init_flags;
+typedef int rr_query_type;
 typedef struct{}* rr_instance;
 typedef struct {}* rr_shape;
 
@@ -97,31 +102,56 @@ extern "C" {
         rr_instance* out_instance);
 
     // Attach shape to the current scene maintained by an API.
-    RR_API rr_status rrAttachShape(rr_instance instance, rr_shape shape);
+    RR_API rr_status rrAttachShape(
+        // API instance
+        rr_instance instance,
+        // Shape to attach
+        rr_shape shape);
 
     // Detach shape from the current scene maintained by an API.
-    RR_API rr_status rrDetachShape(rr_instance instance, rr_shape shape);
+    RR_API rr_status rrDetachShape(
+        // API instance
+        rr_instance instance,
+        // Shape to detach
+        rr_shape shape);
 
     // Detach all shapes from the current scene maintained by an API.
-    RR_API rr_status rrDetachAllShapes(rr_instance instance);
+    RR_API rr_status rrDetachAllShapes(
+        // API instance
+        rr_instance instance);
 
     // Commit changes for the current scene maintained by an API.
-    RR_API rr_status rrCommit(rr_instance instance, VkCommandBuffer* out_command_buffer);
+    RR_API rr_status rrCommit(
+        // API instance
+        rr_instance instance,
+        // Scene creation command buffer
+        VkCommandBuffer* out_command_buffer
+    );
 
     // Delete shape object.
     RR_API rr_status rrDeleteShape(rr_instance instance, rr_shape shape);
 
     // Bind buffers for the query
     RR_API rr_status rrBindBuffers(
+        // API instance
         rr_instance instance,
+        // Buffer containing rays
         VkBuffer ray_buffer,
+        // Buffer to write hits to
         VkBuffer hit_buffer,
+        // Number of rays/hits in the buffer
         uint32_t num_rays
     );
 
-    RR_API rr_status rrIntersect(
+    // Create ray tracing command buffer
+    RR_API rr_status rrTraceRays(
+        // API instance
         rr_instance instance,
+        // Intersect or occluded
+        rr_query_type query_type,
+        // Number or rays to trace
         uint32_t num_rays,
+        // Resulting command buffer
         VkCommandBuffer* out_command_buffer
     );
 
@@ -135,13 +165,6 @@ extern "C" {
         uint32_t num_faces,
         uint32_t id,
         rr_shape* out_shape
-    );
-
-    RR_API rr_status rrOccluded(rr_instance instance,
-        VkBuffer ray_buffer,
-        VkBuffer hit_buffer,
-        uint32_t num_rays,
-        VkCommandBuffer* out_command_buffer
     );
 
     RR_API rr_status rrShutdownInstance(rr_instance instance);

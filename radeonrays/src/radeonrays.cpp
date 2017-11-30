@@ -200,8 +200,9 @@ rr_status rrInitInstance(
     return RR_SUCCESS;
 }
 
-rr_status rrIntersect(
+rr_status rrTraceRays(
     rr_instance inst,
+    rr_query_type query_type,
     uint32_t num_rays,
     VkCommandBuffer* out_command_buffer) {
     auto instance = reinterpret_cast<Instance*>(inst);
