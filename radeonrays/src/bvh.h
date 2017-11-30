@@ -414,10 +414,7 @@ namespace RadeonRays {
                 _mm_store_ps(&parent.pmax.x, request.aabb_max);
 
                 assert(contains(parent, left));
-                if (!contains(parent, right)) {
-                    bool b = contains(parent, right);
-                    std::cout << "Fail\n";
-                }
+                assert(contains(parent, right));
             }
 #endif
 #endif
