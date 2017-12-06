@@ -23,6 +23,7 @@ target_sources(RadeonRays PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/vk_mem_manager.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/vk_utils.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/rr_instance.h
     ${CMAKE_CURRENT_SOURCE_DIR}/inc/radeonrays.h)
 
 target_link_libraries(RadeonRays PUBLIC Vulkan::Vulkan)
