@@ -177,6 +177,18 @@ extern "C" {
         rr_shape* out_shape
     );
 
+    // Set shape transform
+    RR_API rr_status rrShapeSetTransform(
+        // API instance
+        rr_instance instance,
+        // Shape pointer
+        rr_shape shape,
+        // Transform: 16 floats, row-major,
+        // multiplied on right side vs column vector,
+        // so translation is 4th column.
+        float const* transform
+    );
+
     // Shutdown API instance
     RR_API rr_status rrShutdownInstance(
         // API instance

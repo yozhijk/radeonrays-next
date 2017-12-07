@@ -21,27 +21,19 @@ THE SOFTWARE.
 ********************************************************************/
 #pragma once
 #include <vulkan/vulkan.hpp>
-#include "vk_memory_allocator.h"
 #include "world.h"
 
 namespace RadeonRays {
-    class Intersector;
-    struct Instance {
-        // Vulkan device to run queries on
-        vk::Device device = nullptr;
-        // Command pool to allocate command buffers
-        vk::CommandPool cmd_pool = nullptr;
-        // Pipeline cache
-        vk::PipelineCache pipeline_cache = nullptr;
-        // Descriptor pool for RR descriptor sets
-        vk::DescriptorPool desc_pool = nullptr;
-        // Allocator
-        std::unique_ptr<VkMemoryAlloc> alloc = nullptr;
-        // Intersector
-        std::unique_ptr<Intersector> intersector = nullptr;
+    class Intersector {
+    public:
+        Intersector() = default;
+        virtual ~Intersector() = default;
 
-        // World keeps set of shapes currently bound
-        World world;
+        virtual void BindBuffers(vk::Buffer rays, vk::Buffer hits, std::uint32_t num_rays) = 0;
+        virtual vk::CommandBuffer Commit(World const& world) = 0;
+        virtual vk::CommandBuffer TraceRays(std::uint32_t num_rays) = 0;
+
+        Intersector(Intersector const&) = delete;
+        Intersector& operator = (Intersector const&) = delete;
     };
 }
-
