@@ -23,17 +23,26 @@ THE SOFTWARE.
 #include <vulkan/vulkan.hpp>
 #include <unordered_map>
 
+// VkMemoryAlloc manages device memory allocation.
+// Different memory type might be requested, allocator
+// manages separates pool for those.
 struct VkMemoryAlloc {
     static std::size_t constexpr kChunkSize = 256 * 1024 * 1024;
     static std::size_t align(std::size_t value, std::size_t alignment) {
         return (value + (alignment - 1)) / alignment * alignment;
     }
 
+    // Storage block is a unit of allocation managed by VkMemoryAlloc
     struct StorageBlock {
+        // Memory storage
         vk::DeviceMemory memory;
+        // Buffer (gets bound only on allocate)
         mutable vk::Buffer buffer;
+        // Offset in memory
         vk::DeviceSize offset;
+        // Block size
         vk::DeviceSize size;
+        // Block memory type
         int memory_type_index;
 
         StorageBlock(
@@ -49,6 +58,7 @@ struct VkMemoryAlloc {
             , memory_type_index(midx) {}
     };
 
+    // Ctor
     VkMemoryAlloc(
         vk::Device device,
         vk::PhysicalDevice physical_device)
@@ -56,16 +66,22 @@ struct VkMemoryAlloc {
         , physical_device_(physical_device)
         , memory_props_(physical_device.getMemoryProperties()) {}
 
+    // Dtor
     ~VkMemoryAlloc() {
         ReleaseMemory();
     }
 
+    // Allocate block of a specified size and type. Memory region is automatically 
+    // bound to a buffer with a specified usage and put to block.buffer.
     StorageBlock allocate(
+        // Memory type
         vk::MemoryPropertyFlags type,
+        // Buffer usage
         vk::BufferUsageFlags usage,
         std::size_t size,
         std::size_t alignment);
 
+    // Deallocate the block (the buffer is unbound and destroyed).
     void deallocate(StorageBlock const& block);
 
 private:
@@ -83,7 +99,7 @@ private:
         return index;
     }
 
-    // Release all the memory
+    // Release everything
     void ReleaseMemory() {
         for (auto& h : alloc_headers_) {
             for (auto& m : h.second.memories_) {
@@ -92,15 +108,20 @@ private:
         }
     }
 
+    // Alloc header keeps free blocks and 
+    // memory allocations for a specific 
+    // memory type index
     struct AllocHeader {
         int mem_type_index;
         std::list<StorageBlock> free_blocks_;
         std::list<vk::DeviceMemory> memories_;
     };
 
+    // Vulkan devices
     vk::Device device_;
     vk::PhysicalDevice physical_device_;
     vk::PhysicalDeviceMemoryProperties memory_props_;
+    // Headers
     std::unordered_map<int, AllocHeader> alloc_headers_;
 };
 

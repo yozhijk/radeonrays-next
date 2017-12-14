@@ -90,7 +90,7 @@ public:
     std::vector<tinyobj::material_t> materials;
     std::vector<RadeonRays::float3> vertices;
     tinyobj::attrib_t attrib;
-    RadeonRays::Bvh<RadeonRays::BVHNode, RadeonRays::BVHNodeTraits> bvh;
+    RadeonRays::BVH<RadeonRays::BVHNode, RadeonRays::BVHNodeTraits> bvh;
 };
 
 #define CORNELL_BOX "../../data/cornellbox.obj"
@@ -145,9 +145,8 @@ TEST_F(BvhTest1, CornellBox_QBVH) {
     LoadScene(CORNELL_BOX);
     ASSERT_NO_THROW(bvh.Build(world.cbegin(), world.cend()));
 
-    RadeonRays::BVHNodeTraits::PropagateBounds(bvh);
-    RadeonRays::QBvh qbvh = qbvh.Create(bvh);
-
+    RadeonRays::QBVH qbvh;
+    ASSERT_NO_THROW(qbvh.Build(world.cbegin(), world.cend()));
 
     std::stack<std::uint32_t> stack;
     stack.push(0u);
@@ -155,7 +154,7 @@ TEST_F(BvhTest1, CornellBox_QBVH) {
     auto CheckInvariant = [](
         float const* aabb_min,
         float const* aabb_max,
-        RadeonRays::QBVHNode& node
+        RadeonRays::QBVHNode const& node
         ) -> bool {
         using namespace RadeonRays;
 
@@ -198,13 +197,13 @@ TEST_F(BvhTest1, CornellBox_QBVH) {
 
     while (!stack.empty()) {
         using namespace RadeonRays;
-        auto& node = qbvh.nodes_[stack.top()];
+        auto& node = *qbvh.GetNode(stack.top());
         stack.pop();
 
         float cmin[3];
         float cmax[3];
 
-        auto& c0 = qbvh.nodes_[node.addr0];
+        auto& c0 = *qbvh.GetNode(node.addr0);
 
         copy3unpack_lo(node.aabb01_min_or_v0, cmin);
         copy3unpack_lo(node.aabb01_max_or_v1, cmax);
@@ -219,7 +218,7 @@ TEST_F(BvhTest1, CornellBox_QBVH) {
         }
 
         if (node.addr1_or_mesh_id != RR_INVALID_ID) {
-            auto& c1 = qbvh.nodes_[node.addr1_or_mesh_id];
+            auto& c1 = *qbvh.GetNode(node.addr1_or_mesh_id);
             copy3unpack_hi(node.aabb01_min_or_v0, cmin);
             copy3unpack_hi(node.aabb01_max_or_v1, cmax);
 
@@ -233,7 +232,7 @@ TEST_F(BvhTest1, CornellBox_QBVH) {
             }
         }
 
-        auto& c2 = qbvh.nodes_[node.addr2_or_prim_id];
+        auto& c2 = *qbvh.GetNode(node.addr2_or_prim_id);
         copy3unpack_lo(node.aabb23_min_or_v2, cmin);
         copy3unpack_lo(node.aabb23_max, cmax);
 
@@ -247,7 +246,7 @@ TEST_F(BvhTest1, CornellBox_QBVH) {
         }
 
         if (node.addr3 != RR_INVALID_ID) {
-            auto& c3 = qbvh.nodes_[node.addr3];
+            auto& c3 = *qbvh.GetNode(node.addr3);
             copy3unpack_hi(node.aabb23_min_or_v2, cmin);
             copy3unpack_hi(node.aabb23_max, cmax);
             ASSERT_TRUE(CheckInvariant(
@@ -269,9 +268,8 @@ TEST_F(BvhTest1, Sponza_QBVH) {
     LoadScene(CRYTEK_SPONZA);
     ASSERT_NO_THROW(bvh.Build(world.cbegin(), world.cend()));
 
-    RadeonRays::BVHNodeTraits::PropagateBounds(bvh);
-
-    RadeonRays::QBvh qbvh = qbvh.Create(bvh);
+    RadeonRays::QBVH qbvh;
+    ASSERT_NO_THROW(qbvh.Build(world.cbegin(), world.cend()));
 
     std::stack<std::uint32_t> stack;
     stack.push(0u);
@@ -279,7 +277,7 @@ TEST_F(BvhTest1, Sponza_QBVH) {
     auto CheckInvariant = [](
         float const* aabb_min,
         float const* aabb_max,
-        RadeonRays::QBVHNode& node
+        RadeonRays::QBVHNode const& node
         ) -> bool {
         using namespace RadeonRays;
 
@@ -323,13 +321,13 @@ TEST_F(BvhTest1, Sponza_QBVH) {
 
     while (!stack.empty()) {
         using namespace RadeonRays;
-        auto& node = qbvh.nodes_[stack.top()];
+        auto& node = *qbvh.GetNode(stack.top());
         stack.pop();
 
         float cmin[3];
         float cmax[3];
 
-        auto& c0 = qbvh.nodes_[node.addr0];
+        auto& c0 = *qbvh.GetNode(node.addr0);
 
         copy3unpack_lo(node.aabb01_min_or_v0, cmin);
         copy3unpack_lo(node.aabb01_max_or_v1, cmax);
@@ -344,7 +342,7 @@ TEST_F(BvhTest1, Sponza_QBVH) {
         }
 
         if (node.addr1_or_mesh_id != RR_INVALID_ID) {
-            auto& c1 = qbvh.nodes_[node.addr1_or_mesh_id];
+            auto& c1 = *qbvh.GetNode(node.addr1_or_mesh_id);
             copy3unpack_hi(node.aabb01_min_or_v0, cmin);
             copy3unpack_hi(node.aabb01_max_or_v1, cmax);
 
@@ -358,7 +356,7 @@ TEST_F(BvhTest1, Sponza_QBVH) {
             }
         }
 
-        auto& c2 = qbvh.nodes_[node.addr2_or_prim_id];
+        auto& c2 = *qbvh.GetNode(node.addr2_or_prim_id);
         copy3unpack_lo(node.aabb23_min_or_v2, cmin);
         copy3unpack_lo(node.aabb23_max, cmax);
 
@@ -372,7 +370,7 @@ TEST_F(BvhTest1, Sponza_QBVH) {
         }
 
         if (node.addr3 != RR_INVALID_ID) {
-            auto& c3 = qbvh.nodes_[node.addr3];
+            auto& c3 = *qbvh.GetNode(node.addr3);
             copy3unpack_hi(node.aabb23_min_or_v2, cmin);
             copy3unpack_hi(node.aabb23_max, cmax);
             ASSERT_TRUE(CheckInvariant(

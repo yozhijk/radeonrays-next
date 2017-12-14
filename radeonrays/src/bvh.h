@@ -40,7 +40,7 @@ THE SOFTWARE.
 #include "utils.h"
 #include "bvh_utils.h"
 
-//#define PARALLEL_BUILD
+#define PARALLEL_BUILD
 
 namespace RadeonRays {
 
@@ -49,7 +49,7 @@ namespace RadeonRays {
         typename Node,
         typename NodeTraits,
         typename Allocator = aligned_allocator>
-    class Bvh {
+    class BVH {
         using MetaDataArray = std::vector<std::pair<Mesh const*, std::size_t>>;
         using RefArray = std::vector<std::uint32_t>;
 
@@ -59,6 +59,8 @@ namespace RadeonRays {
         };
 
     public:
+        using NodeT = Node;
+
         template<typename Iter> void Build(Iter begin, Iter end) {
             auto num_shapes = std::distance(begin, end);
 
@@ -169,6 +171,7 @@ namespace RadeonRays {
                 std::chrono::milliseconds>(delta).count() << " ms\n";
 #endif
 #endif
+            NodeTraits::Finalize(*this);
         }
 
         void Clear() {

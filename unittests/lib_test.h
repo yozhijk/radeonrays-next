@@ -155,7 +155,7 @@ public:
             }
         }
 
-        char* extensions[] = { "VK_AMD_shader_ballot", "VK_EXT_shader_subgroup_ballot", "VK_AMD_gpu_shader_half_float" };
+        char* extensions[] = { /*"VK_AMD_shader_ballot", "VK_EXT_shader_subgroup_ballot", */"VK_AMD_gpu_shader_half_float" };
 
         float default_priority = 1.f;
         auto queue_create_info = vk::DeviceQueueCreateInfo()

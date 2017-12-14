@@ -1,14 +1,16 @@
 #include <radeonrays.h>
 #include <vulkan/vulkan.hpp>
+#include <vk_memory_allocator.h>
 
 #include <vector>
 
-#include "rr_instance.h"
+#include <rr_instance.h>
 
-#include "mesh.h"
-#include "utils.h"
-#include "vk_memory_allocator.h"
-#include "intersector_lds.h"
+#include <mesh.h>
+#include <utils.h>
+
+#include <bvh_config.h>
+#include <intersector_lds.h>
 
 
 using namespace RadeonRays;
@@ -46,7 +48,7 @@ static void InitVulkan(
 
     instance->alloc.reset(new VkMemoryAlloc(device, physical_device));
     instance->intersector.reset(
-        new IntersectorLDS(
+        new IntersectorLDS<BVH2, BVHTraits<BVH2>>(
             device,
             command_pool,
             instance->desc_pool,

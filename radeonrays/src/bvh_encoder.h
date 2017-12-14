@@ -44,6 +44,8 @@ namespace RadeonRays {
         float aabb_right_max[3] = { 0.f, 0.f, 0.f };
         // Primitive ID for a leaf node
         uint32_t prim_id = RR_INVALID_ID;
+
+        static constexpr char const* kTraversalKernelFileName = "isect.comp.spv";
     };
 
     // Properties of BVHNode
@@ -121,7 +123,7 @@ namespace RadeonRays {
         // into their parent node. That's exactly what PropagateBounds 
         // is doing.
         static
-        void PropagateBounds(Bvh<BVHNode, BVHNodeTraits>& bvh) {
+        void Finalize(BVH<BVHNode, BVHNodeTraits>& bvh) {
 
             // Traversal stack
             std::stack<std::uint32_t> s;

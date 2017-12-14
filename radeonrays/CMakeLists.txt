@@ -2,8 +2,7 @@ find_package(Vulkan)
 
 add_library(RadeonRays
     ${CMAKE_CURRENT_SOURCE_DIR}/src/world.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/radeonrays.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/intersector_lds.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/radeonrays.cpp)
 
 target_include_directories(RadeonRays PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/inc
@@ -23,6 +22,8 @@ target_sources(RadeonRays PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bvh_encoder.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/qbvh_encoder.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/bvh_utils.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/qbvh_utils.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/bvh_config.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/vk_memory_allocator.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/vk_utils.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.h

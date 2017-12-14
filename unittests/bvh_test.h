@@ -76,6 +76,8 @@ struct BvhNodeTraits {
     static std::uint32_t GetChildIndex(BvhNode& node, std::uint8_t idx) {
         return IsInternal(node) ? (node.child[idx]) : 0xffffffffu;
     }
+
+    static void Finalize(RadeonRays::BVH<BvhNode, BvhNodeTraits>& bvh){}
 };
 
 class BvhTest : public ::testing::Test {
@@ -133,7 +135,7 @@ public:
     std::vector<tinyobj::material_t> materials;
     std::vector<RadeonRays::float3> vertices;
     tinyobj::attrib_t attrib;
-    RadeonRays::Bvh<BvhNode, BvhNodeTraits> bvh;
+    RadeonRays::BVH<BvhNode, BvhNodeTraits> bvh;
 };
 
 #define CORNELL_BOX "../../data/cornellbox.obj"
