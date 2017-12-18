@@ -78,7 +78,19 @@ namespace RadeonRays {
             }
         }
 
-        static std::uint32_t constexpr kInitialWorkBufferSize = 1024u * 1024u;
+        // Check if we have enough memory in the stack buffer
+        void CheckAndReallocStackBuffer(std::size_t required_size) {
+            if (stack_.size < required_size) {
+                alloc_.deallocate(stack_);
+                stack_ = alloc_.allocate(
+                    vk::MemoryPropertyFlagBits::eDeviceLocal,
+                    vk::BufferUsageFlagBits::eStorageBuffer,
+                    required_size,
+                    16u);
+            }
+        }
+
+        static std::uint32_t constexpr kInitialWorkBufferSize = 1920u * 1080u;
         static std::uint32_t constexpr kGlobalStackSize = 32u;
 
         // Intersection device
@@ -193,7 +205,7 @@ namespace RadeonRays {
         stack_ = alloc_.allocate(
             vk::MemoryPropertyFlagBits::eDeviceLocal,
             vk::BufferUsageFlagBits::eStorageBuffer,
-            kInitialWorkBufferSize * kGlobalStackSize,
+            kInitialWorkBufferSize * kGlobalStackSize * sizeof(std::uint32_t),
             16u);
     }
 
@@ -298,6 +310,12 @@ namespace RadeonRays {
         vk::Buffer rays,
         vk::Buffer hits,
         std::uint32_t num_rays) {
+
+        // Check if we have enough stack memory
+        auto stack_size_in_bytes = 
+            num_rays * kGlobalStackSize * sizeof(std::uint32_t);
+        CheckAndReallocStackBuffer(stack_size_in_bytes);
+
         vk::DescriptorBufferInfo desc_buffer_info[kNumBindings];
         desc_buffer_info[0]
             .setBuffer(rays)
