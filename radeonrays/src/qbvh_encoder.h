@@ -63,7 +63,7 @@ namespace RadeonRays {
         using NodeT = QBVHNode;
 
         template<typename Iter> void Build(Iter begin, Iter end) {
-            BVH<BVHNode, BVHNodeTraits> bvh;
+            BVH<BVHNode, BVHNodeTraits, PrimitiveTraits> bvh;
             bvh.Build(begin, end);
 
             nodes_.resize(1);

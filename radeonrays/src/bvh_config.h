@@ -27,7 +27,7 @@ THE SOFTWARE.
 
 namespace RadeonRays {
 
-    using BVH2 = BVH<BVHNode, BVHNodeTraits>;
+    using BVH2 = BVH<BVHNode, BVHNodeTraits, PrimitiveTraits>;
     using BVH4 = QBVH;
 
     template <typename BVH> struct BVHTraits {

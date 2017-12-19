@@ -24,6 +24,7 @@ THE SOFTWARE.
 #include <radeonrays.h>
 #include <cstdint>
 #include <bvh.h>
+#include <shape.h>
 
 namespace RadeonRays {
     // Encoded node format.
@@ -46,6 +47,31 @@ namespace RadeonRays {
         uint32_t prim_id = RR_INVALID_ID;
 
         static constexpr char const* kTraversalKernelFileName = "isect.comp.spv";
+    };
+
+    struct PrimitiveTraits {
+        using MetadataPtr = Shape const*;
+
+        static
+        std::size_t GetNumAABBs(Shape const* shape) {
+            auto mesh = static_cast<Mesh const*>(shape);
+            return mesh->num_faces();
+        }
+
+        static
+        void GetAABB(
+            Shape const* shape,
+            std::size_t index,
+            __m128& pmin,
+            __m128& pmax) {
+            auto mesh = static_cast<Mesh const*>(shape);
+            auto face = mesh->GetIndexData(index);
+            auto v0 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[0]));
+            auto v1 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[1]));
+            auto v2 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[2]));
+            pmin = _mm_min_ps(_mm_min_ps(v0, v1), v2);
+            pmax = _mm_max_ps(_mm_max_ps(v0, v1), v2);
+        }
     };
 
     // Properties of BVHNode
@@ -85,8 +111,8 @@ namespace RadeonRays {
             void SetPrimitive(
                 BVHNode& node,
                 std::uint32_t index,
-                std::pair<Mesh const*, std::size_t> ref) {
-            auto mesh = ref.first;
+                std::pair<Shape const*, std::size_t> ref) {
+            auto mesh = static_cast<Mesh const*>(ref.first);
             auto vertices = mesh->GetFaceVertexData(ref.second);
             node.aabb_left_min_or_v0[0] = vertices[0].x;
             node.aabb_left_min_or_v0[1] = vertices[0].y;
@@ -123,7 +149,7 @@ namespace RadeonRays {
         // into their parent node. That's exactly what PropagateBounds 
         // is doing.
         static
-        void Finalize(BVH<BVHNode, BVHNodeTraits>& bvh) {
+        void Finalize(BVH<BVHNode, BVHNodeTraits, PrimitiveTraits>& bvh) {
 
             // Traversal stack
             std::stack<std::uint32_t> s;

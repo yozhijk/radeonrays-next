@@ -90,7 +90,7 @@ public:
     std::vector<tinyobj::material_t> materials;
     std::vector<RadeonRays::float3> vertices;
     tinyobj::attrib_t attrib;
-    RadeonRays::BVH<RadeonRays::BVHNode, RadeonRays::BVHNodeTraits> bvh;
+    RadeonRays::BVH<RadeonRays::BVHNode, RadeonRays::BVHNodeTraits, RadeonRays::PrimitiveTraits> bvh;
 };
 
 #define CORNELL_BOX "../../data/cornellbox.obj"

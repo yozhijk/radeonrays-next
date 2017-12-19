@@ -48,9 +48,10 @@ namespace RadeonRays {
     template <
         typename Node,
         typename NodeTraits,
+        typename PrimTraits,
         typename Allocator = aligned_allocator>
     class BVH {
-        using MetaDataArray = std::vector<std::pair<Mesh const*, std::size_t>>;
+        using MetaDataArray = std::vector<std::pair<typename PrimTraits::MetadataPtr, std::size_t>>;
         using RefArray = std::vector<std::uint32_t>;
 
         enum class NodeType {
@@ -70,7 +71,8 @@ namespace RadeonRays {
 
             std::size_t num_items = 0;
             for (auto i = begin; i != end; ++i) {
-                num_items += static_cast<Mesh const*>((*i))->num_faces();
+                num_items += PrimTraits::GetNumAABBs(*i);
+                //num_items += static_cast<Mesh const*>((*i))->num_faces();
             }
 
             auto deleter = [](void* p) {
@@ -110,18 +112,12 @@ namespace RadeonRays {
 
             std::size_t current_face = 0;
             for (auto iter = begin; iter != end; ++iter) {
-                auto mesh = static_cast<Mesh const*>(*iter);
-                for (std::size_t face_index = 0;
-                    face_index < mesh->num_faces();
-                    ++face_index, ++current_face) {
-                    auto face = mesh->GetIndexData(face_index);
+                for (std::size_t index = 0;
+                    index < PrimTraits::GetNumAABBs(*iter);
+                    ++index, ++current_face) {
+                    __m128 pmin, pmax;
+                    PrimTraits::GetAABB(*iter, index, pmin, pmax);
 
-                    auto v0 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[0]));
-                    auto v1 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[1]));
-                    auto v2 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[2]));
-
-                    auto pmin = _mm_min_ps(_mm_min_ps(v0, v1), v2);
-                    auto pmax = _mm_max_ps(_mm_max_ps(v0, v1), v2);
                     auto centroid = _mm_mul_ps(
                         _mm_add_ps(pmin, pmax),
                         _mm_set_ps(0.5f, 0.5f, 0.5f, 0.5f));
@@ -136,7 +132,7 @@ namespace RadeonRays {
                     _mm_store_ps(&aabb_max[current_face].x, pmax);
                     _mm_store_ps(&aabb_centroid[current_face].x, centroid);
 
-                    metadata[current_face] = std::make_pair(mesh, face_index);
+                    metadata[current_face] = std::make_pair(*iter, index);
                 }
             }
 

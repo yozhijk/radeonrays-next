@@ -5,7 +5,7 @@
 #include "tiny_obj_loader.h"
 
 #include "world_test.h"
-#include "bvh_test.h"
+//#include "bvh_test.h"
 #include "bvh_test1.h"
 #include "lib_test.h"
 

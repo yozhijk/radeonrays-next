@@ -24,6 +24,7 @@ THE SOFTWARE.
 #include "gtest/gtest.h"
 #include <radeonrays.h>
 #include <vulkan/vulkan.hpp>
+#include <chrono>
 
 #define _CRT_SECURE_NO_WARNINGS
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -567,7 +568,7 @@ TEST_F(LibTest, CornellBox) {
 TEST_F(LibTest, Sponza) {
 
     LoadScene(CRYTEK_SPONZA);
-    auto constexpr kResolution = 1024;
+    auto constexpr kResolution = 1536;
 
     std::vector<Ray> data(kResolution * kResolution);
     std::vector<Hit> result(kResolution * kResolution);
