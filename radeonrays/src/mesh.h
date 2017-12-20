@@ -32,15 +32,20 @@ THE SOFTWARE.
 #include "math/float2.h"
 #include "math/mathutils.h"
 
-namespace RadeonRays {
-    class Mesh : public Shape {
+namespace RadeonRays
+{
+    // Triangle mesh class
+    class Mesh : public Shape
+    {
     public:
-        enum class CoordinateSpace {
+        enum class CoordinateSpace
+        {
             kLocal,
             kWorld
         };
 
-        struct Face {
+        struct Face
+        {
             int idx[3];
         };
 
@@ -57,19 +62,18 @@ namespace RadeonRays {
             , indices_(indices)
             , num_indices_(num_faces * 3)
             , index_stride_(index_stride == 0
-                ? sizeof(std::uint32_t) : index_stride) {
-        }
+                ? sizeof(std::uint32_t) : index_stride)
+        {}
 
         auto num_faces() const { return num_indices_ / 3; }
         auto num_vertices() const { return num_vertices_; }
         auto vertex_stride() const { return vertex_stride_; }
         auto index_stride() const { return index_stride_; }
 
-        auto GetFaceBounds(
-            int face_index,
-            CoordinateSpace space = CoordinateSpace::kWorld) const {
-            auto vertices = GetTransformedVertices(
-                face_index, 
+        auto GetFaceBounds(int face_index,
+            CoordinateSpace space = CoordinateSpace::kWorld) const
+        {
+            auto vertices = GetTransformedVertices(face_index,
                 space == CoordinateSpace::kLocal ?
                 matrix() : GetTransform());
             bbox bounds{ vertices[0], vertices[1] };
@@ -78,22 +82,26 @@ namespace RadeonRays {
         }
 
         auto GetVertexData() const { return vertices_; }
-        auto GetVertexData(std::size_t vertex_index) const {
+        auto GetVertexData(std::size_t vertex_index) const
+        {
             return *reinterpret_cast<float3 const*>(
                 reinterpret_cast<char const*>(vertices_) +
                 vertex_index * vertex_stride_);
         }
-        auto GetVertexDataPtr(std::size_t vertex_index) const {
+        auto GetVertexDataPtr(std::size_t vertex_index) const
+        {
             return reinterpret_cast<float3 const*>(
                 reinterpret_cast<char const*>(vertices_) +
                 vertex_index * vertex_stride_);
         }
-        auto GetFaceVertexData(std::size_t face_index) const {
+        auto GetFaceVertexData(std::size_t face_index) const
+        {
             return GetTransformedVertices(face_index, matrix());
         }
 
         auto GetIndexData() const { return indices_; }
-        auto GetIndexData(std::size_t face_index) const {
+        auto GetIndexData(std::size_t face_index) const
+        {
             Face face;
             face.idx[0] = *reinterpret_cast<std::uint32_t const*>(
                 reinterpret_cast<char const*>(indices_) +
@@ -107,38 +115,40 @@ namespace RadeonRays {
             return face;
         }
 
-        auto GetBounds(CoordinateSpace space = CoordinateSpace::kWorld) const {
+        auto GetBounds(CoordinateSpace space = CoordinateSpace::kWorld) const
+        {
             bbox bounds;
-            for (std::uint32_t i = 0; i < num_faces(); ++i) {
+            for (std::uint32_t i = 0; i < num_faces(); ++i)
+            {
                 bounds.grow(GetFaceBounds(i, space));
             }
             return bounds;
         }
 
-        Mesh(Mesh const&) = default;
-        Mesh& operator =(Mesh const&) = default;
+        Mesh(Mesh const&) = delete;
+        Mesh& operator =(Mesh const&) = delete;
 
     private:
-        std::array<float3, 3> GetTransformedVertices(
-            std::size_t face_index,
-            matrix const& transform) const {
+        std::array<float3, 3> GetTransformedVertices(std::size_t face_index,
+            matrix const& transform) const
+        {
             auto face = GetIndexData(face_index);
             std::array<float3, 3> vertices;
-            vertices[0] = transform_point(GetVertexData(face.idx[0]),transform);
+            vertices[0] = transform_point(GetVertexData(face.idx[0]), transform);
             vertices[1] = transform_point(GetVertexData(face.idx[1]), transform);
             vertices[2] = transform_point(GetVertexData(face.idx[2]), transform);
             return vertices;
         }
 
-        std::array<float3, 3> GetFaceVertices(
-            std::size_t face_index) const {
-             auto face = GetIndexData(face_index);
-             std::array<float3, 3> vertices;
-             vertices[0] = GetVertexData(face.idx[0]);
-             vertices[1] = GetVertexData(face.idx[1]);
-             vertices[2] = GetVertexData(face.idx[2]);
-             return vertices;
-         }
+        std::array<float3, 3> GetFaceVertices(std::size_t face_index) const
+        {
+            auto face = GetIndexData(face_index);
+            std::array<float3, 3> vertices;
+            vertices[0] = GetVertexData(face.idx[0]);
+            vertices[1] = GetVertexData(face.idx[1]);
+            vertices[2] = GetVertexData(face.idx[2]);
+            return vertices;
+        }
 
         float3 const* vertices_;
         std::size_t num_vertices_;

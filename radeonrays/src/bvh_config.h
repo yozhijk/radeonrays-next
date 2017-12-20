@@ -25,24 +25,33 @@ THE SOFTWARE.
 #include <bvh_encoder.h>
 #include <qbvh_encoder.h>
 
-namespace RadeonRays {
-
+namespace RadeonRays
+{
     using BVH2 = BVH<BVHNode, BVHNodeTraits, PrimitiveTraits>;
     using BVH4 = QBVH;
 
-    template <typename BVH> struct BVHTraits {
-        static std::size_t GetSizeInBytes(BVH const& bvh) {
+    template <typename BVH>
+    struct BVHTraits
+    {
+        static
+        std::size_t GetSizeInBytes(BVH const& bvh)
+        {
             return bvh.num_nodes() * sizeof(typename BVH::NodeT);
         }
 
-        static void StreamBVH(BVH const& bvh, void* ptr) {
+        static
+        void StreamBVH(BVH const& bvh, void* ptr)
+        {
             auto data = reinterpret_cast<typename BVH::NodeT*>(ptr);
-            for (auto i = 0u; i < bvh.num_nodes(); ++i) {
-                data[i] = *bvh.GetNode(i);
+            for (auto i = 0u; i < bvh.num_nodes(); ++i)
+            {
+                data[i] = *bvh.node(i);
             }
         }
 
-        static constexpr char const* GetGPUTraversalFileName() {
+        static
+        constexpr char const* GetGPUTraversalFileName()
+        {
             return BVH::NodeT::kTraversalKernelFileName;
         }
     };

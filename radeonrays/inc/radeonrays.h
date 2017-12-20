@@ -61,11 +61,12 @@ THE SOFTWARE.
 typedef int rr_status;
 typedef int rr_init_flags;
 typedef int rr_query_type;
-typedef struct{}* rr_instance;
-typedef struct {}* rr_shape;
+typedef struct {}*rr_instance;
+typedef struct {}*rr_shape;
 
 // Ray payload structure
-struct Ray {
+struct Ray
+{
     // Ray direction
     float direction[3];
     // Not used for now
@@ -77,7 +78,8 @@ struct Ray {
 };
 
 // Hit payload structure
-struct Hit {
+struct Hit
+{
     // ID of shape (RR_INVALID_ID in case of a miss)
     uint32_t shape_id;
     // ID of a primitive (undefined in case of a miss)
@@ -95,6 +97,7 @@ extern "C" {
     RR_API rr_status rrInitInstance(
         // GPU to run ray queries on
         VkDevice device,
+        // Physical device
         VkPhysicalDevice physical_device,
         // Command pool to allocate command buffers
         VkCommandPool command_pool,
@@ -125,8 +128,7 @@ extern "C" {
         // API instance
         rr_instance instance,
         // Scene creation command buffer
-        VkCommandBuffer* out_command_buffer
-    );
+        VkCommandBuffer* out_command_buffer);
 
     // Delete shape object.
     RR_API rr_status rrDeleteShape(rr_instance instance, rr_shape shape);
@@ -140,8 +142,7 @@ extern "C" {
         // Buffer to write hits to
         VkBuffer hit_buffer,
         // Number of rays/hits in the buffer
-        uint32_t num_rays
-    );
+        uint32_t num_rays);
 
     // Create ray tracing command buffer
     RR_API rr_status rrTraceRays(
@@ -152,8 +153,7 @@ extern "C" {
         // Number or rays to trace
         uint32_t num_rays,
         // Resulting command buffer
-        VkCommandBuffer* out_command_buffer
-    );
+        VkCommandBuffer* out_command_buffer);
 
     // Create triangle mesh
     RR_API rr_status rrCreateTriangleMesh(
@@ -174,8 +174,7 @@ extern "C" {
         // ID of a mesh (will be set in Hit structure)
         uint32_t id,
         // Resulting shape
-        rr_shape* out_shape
-    );
+        rr_shape* out_shape);
 
     // Set shape transform
     RR_API rr_status rrShapeSetTransform(
@@ -186,8 +185,7 @@ extern "C" {
         // Transform: 16 floats, row-major,
         // multiplied on right side vs column vector,
         // so translation is 4th column.
-        float const* transform
-    );
+        float const* transform);
 
     // Shutdown API instance
     RR_API rr_status rrShutdownInstance(

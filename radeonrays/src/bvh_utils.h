@@ -27,22 +27,25 @@ THE SOFTWARE.
 #include <xmmintrin.h>
 #include <smmintrin.h>
 
-namespace RadeonRays {
-    inline
-    __m128 aabb_surface_area(__m128 pmin, __m128 pmax) {
+namespace RadeonRays
+{
+
+    inline __m128 aabb_surface_area(__m128 pmin, __m128 pmax)
+    {
         auto ext = _mm_sub_ps(pmax, pmin);
         auto xxy = _mm_shuffle_ps(ext, ext, _MM_SHUFFLE(3, 1, 0, 0));
         auto yzz = _mm_shuffle_ps(ext, ext, _MM_SHUFFLE(3, 2, 2, 1));
-        return _mm_mul_ps(_mm_dp_ps(xxy, yzz, 0xff), _mm_set_ps(2.f, 2.f, 2.f, 2.f));
+        return _mm_mul_ps(_mm_dp_ps(xxy, yzz, 0xff),
+            _mm_set_ps(2.f, 2.f, 2.f, 2.f));
     }
 
-    inline
-    __m128 aabb_extents(__m128 pmin, __m128 pmax) {
+    inline __m128 aabb_extents(__m128 pmin, __m128 pmax)
+    {
         return _mm_sub_ps(pmax, pmin);
     }
 
-    inline
-    std::uint32_t aabb_max_extent_axis(__m128 pmin, __m128 pmax) {
+    inline std::uint32_t aabb_max_extent_axis(__m128 pmin, __m128 pmax)
+    {
         auto xyz = _mm_sub_ps(pmax, pmin);
         auto yzx = _mm_shuffle_ps(xyz, xyz, _MM_SHUFFLE(3, 0, 2, 1));
         auto m0 = _mm_max_ps(xyz, yzx);
@@ -52,19 +55,17 @@ namespace RadeonRays {
         return ctz(_mm_movemask_ps(cmp));
     }
 
-    inline
-    float mm_select(__m128 v, std::uint32_t index) {
+    inline float mm_select(__m128 v, std::uint32_t index)
+    {
         _MM_ALIGN16 float temp[4];
         _mm_store_ps(temp, v);
         return temp[index];
     }
 
-    inline
-    bool aabb_contains_point(
-        float const* aabb_min,
+    inline bool aabb_contains_point(float const* aabb_min,
         float const* aabb_max,
-        float const* point) {
-
+        float const* point)
+    {
         return point[0] >= aabb_min[0] &&
             point[0] <= aabb_max[0] &&
             point[1] >= aabb_min[1] &&

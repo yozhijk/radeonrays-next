@@ -22,39 +22,49 @@ THE SOFTWARE.
 #include "world.h"
 #include "shape.h"
 
-namespace RadeonRays {
-    void World::AttachShape(Shape const* shape) {
-        if (std::find(shapes_.cbegin(), shapes_.cend(), shape) == shapes_.cend()) {
+namespace RadeonRays
+{
+    void World::AttachShape(Shape const* shape)
+    {
+        if (std::find(shapes_.cbegin(), shapes_.cend(), shape) == shapes_.cend())
+        {
             shapes_.push_back(shape);
             set_changed(true);
         }
     }
 
-    void World::DetachShape(Shape const* shape) {
+    void World::DetachShape(Shape const* shape)
+    {
         auto iter = std::find(shapes_.cbegin(), shapes_.cend(), shape);
-        if (iter != shapes_.cend()) {
+        if (iter != shapes_.cend())
+        {
             shapes_.erase(iter);
             set_changed(true);
         }
     }
 
-    void World::DetachAll() {
+    void World::DetachAll()
+    {
         shapes_.clear();
         set_changed(true);
     }
 
-    World::StateChange World::state_change() const {
+    World::StateChange World::state_change() const
+    {
         auto state_change = static_cast<std::uint32_t>(Shape::kStateChangeNone);
 
-        for (auto& s : shapes_) {
+        for (auto& s : shapes_)
+        {
             state_change |= s->state_change();
         }
 
         return state_change;
     }
 
-    void World::OnCommit() {
-        for (auto& s : shapes_) {
+    void World::OnCommit()
+    {
+        for (auto& s : shapes_)
+        {
             s->OnCommit();
         }
 

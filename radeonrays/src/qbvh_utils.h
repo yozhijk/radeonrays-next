@@ -48,14 +48,17 @@ namespace RadeonRays {
         FP16 o = { 0 };
         if (f.Exponent == 0) {
             o.Exponent = 0;
-        } else if (f.Exponent == 255) {
+        }
+        else if (f.Exponent == 255) {
             o.Exponent = 31;
             o.Mantissa = f.Mantissa ? 0x200 : 0;
-        } else {
+        }
+        else {
             int newexp = f.Exponent - 127 + 15;
             if (newexp >= 31) {
                 o.Exponent = 31;
-            } else if (newexp <= 0) {
+            }
+            else if (newexp <= 0) {
                 if ((14 - newexp) <= 24) {
                     std::uint32_t mant = f.Mantissa | 0x800000;
                     o.Mantissa = mant >> (14 - newexp);
@@ -63,7 +66,8 @@ namespace RadeonRays {
                         o.u++;
                     }
                 }
-            } else {
+            }
+            else {
                 o.Exponent = newexp;
                 o.Mantissa = f.Mantissa >> 13;
                 if (!f.Sign && !min || f.Sign && min)
@@ -76,17 +80,17 @@ namespace RadeonRays {
     }
 
     inline
-    std::uint16_t float_to_half_min(float value) {
+        std::uint16_t float_to_half_min(float value) {
         return float_to_half(value, true);
     }
 
     inline
-    std::uint16_t float_to_half_max(float value) {
+        std::uint16_t float_to_half_max(float value) {
         return float_to_half(value, false);
     }
 
     inline
-    float half_to_float(std::uint16_t value) {
+        float half_to_float(std::uint16_t value) {
         FP16 h = { value };
         static const FP32 magic = { 113 << 23 };
         static const std::uint32_t shifted_exp = 0x7c00 << 13;
@@ -98,7 +102,8 @@ namespace RadeonRays {
 
         if (exp == shifted_exp) {
             o.u += (128 - 16) << 23;
-        } else if (exp == 0) {
+        }
+        else if (exp == 0) {
             o.u += 1 << 23;
             o.f -= magic.f;
         }
@@ -108,56 +113,56 @@ namespace RadeonRays {
     }
 
     inline
-    void copy3(float const* src, float* dst) {
+        void copy3(float const* src, float* dst) {
         dst[0] = src[0];
         dst[1] = src[1];
         dst[2] = src[2];
     }
 
     inline
-    void copy3(float const* src, std::uint32_t* dst) {
+        void copy3(float const* src, std::uint32_t* dst) {
         *(reinterpret_cast<float*>(dst)) = src[0];
         *(reinterpret_cast<float*>(dst) + 1) = src[1];
         *(reinterpret_cast<float*>(dst) + 2) = src[2];
     }
 
     inline
-    void copy3pack_lo_min(float const* src, std::uint32_t* dst) {
+        void copy3pack_lo_min(float const* src, std::uint32_t* dst) {
         *dst = (*dst & 0xffff0000u) + float_to_half_min(src[0]);
         *(dst + 1) = (*(dst + 1) & 0xffff0000u) + float_to_half_min(src[1]);
         *(dst + 2) = (*(dst + 2) & 0xffff0000u) + float_to_half_min(src[2]);
     }
 
     inline
-    void copy3pack_hi_min(float const* src, std::uint32_t* dst) {
+        void copy3pack_hi_min(float const* src, std::uint32_t* dst) {
         *dst = (*dst & 0xffffu) + (float_to_half_min(src[0]) << 16);
         *(dst + 1) = (*(dst + 1) & 0xffffu) + (float_to_half_min(src[1]) << 16);
         *(dst + 2) = (*(dst + 2) & 0xffffu) + (float_to_half_min(src[2]) << 16);
     }
 
     inline
-    void copy3pack_lo_max(float const* src, std::uint32_t* dst) {
+        void copy3pack_lo_max(float const* src, std::uint32_t* dst) {
         *dst = (*dst & 0xffff0000u) + float_to_half_max(src[0]);
         *(dst + 1) = (*(dst + 1) & 0xffff0000u) + float_to_half_max(src[1]);
         *(dst + 2) = (*(dst + 2) & 0xffff0000u) + float_to_half_max(src[2]);
     }
 
     inline
-    void copy3pack_hi_max(float const* src, std::uint32_t* dst) {
+        void copy3pack_hi_max(float const* src, std::uint32_t* dst) {
         *dst = (*dst & 0xffffu) + (float_to_half_max(src[0]) << 16);
         *(dst + 1) = (*(dst + 1) & 0xffffu) + (float_to_half_max(src[1]) << 16);
         *(dst + 2) = (*(dst + 2) & 0xffffu) + (float_to_half_max(src[2]) << 16);
     }
 
     inline
-    void copy3unpack_lo(std::uint32_t const* src, float* dst) {
+        void copy3unpack_lo(std::uint32_t const* src, float* dst) {
         *dst = half_to_float(src[0] & 0xffffu);
         *(dst + 1) = half_to_float(src[1] & 0xffffu);
         *(dst + 2) = half_to_float(src[2] & 0xffffu);
     }
 
     inline
-    void copy3unpack_hi(std::uint32_t const* src, float* dst) {
+        void copy3unpack_hi(std::uint32_t const* src, float* dst) {
         *dst = half_to_float(src[0] >> 16);
         *(dst + 1) = half_to_float(src[1] >> 16);
         *(dst + 2) = half_to_float(src[2] >> 16);

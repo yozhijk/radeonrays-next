@@ -24,9 +24,11 @@ THE SOFTWARE.
 #include "vk_memory_allocator.h"
 #include "world.h"
 
-namespace RadeonRays {
+namespace RadeonRays
+{
     class Intersector;
-    struct Instance {
+    struct Instance
+    {
         // Vulkan device to run queries on
         vk::Device device = nullptr;
         // Command pool to allocate command buffers

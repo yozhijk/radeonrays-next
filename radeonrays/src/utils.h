@@ -25,29 +25,33 @@ THE SOFTWARE.
 #include <cstdint>
 #include <fstream>
 #include <stdexcept>
+#include <algorithm>
 
 #include <xmmintrin.h>
 #include <smmintrin.h>
 
-namespace RadeonRays {
-
-    struct aligned_allocator {
+namespace RadeonRays
+{
+    struct aligned_allocator
+    {
 #ifdef WIN32
-        static
-        void* allocate(std::size_t size, std::size_t alignement) {
+        static void* allocate(std::size_t size, std::size_t alignement)
+        {
             return _aligned_malloc(size, alignement);
         }
 
-        static
-        void deallocate(void* ptr) {
+        static void deallocate(void* ptr)
+        {
             return _aligned_free(ptr);
         }
 #else
-        static void* allocate(std::size_t size, std::size_t) {
+        static void* allocate(std::size_t size, std::size_t)
+        {
             return malloc(size);
         }
 
-        static void deallocate(void* ptr) {
+        static void deallocate(void* ptr)
+        {
             return free(ptr);
         }
 #endif
@@ -57,7 +61,8 @@ namespace RadeonRays {
 #define clz(x) __builtin_clz(x)
 #define ctz(x) __builtin_ctz(x)
 #else
-    inline std::uint32_t popcnt(std::uint32_t x) {
+    inline std::uint32_t popcnt(std::uint32_t x)
+    {
         x -= ((x >> 1) & 0x55555555);
         x = (((x >> 2) & 0x33333333) + (x & 0x33333333));
         x = (((x >> 4) + x) & 0x0f0f0f0f);
@@ -66,7 +71,8 @@ namespace RadeonRays {
         return x & 0x0000003f;
     }
 
-    inline std::uint32_t clz(std::uint32_t x) {
+    inline std::uint32_t clz(std::uint32_t x)
+    {
         x |= (x >> 1);
         x |= (x >> 2);
         x |= (x >> 4);
@@ -75,18 +81,32 @@ namespace RadeonRays {
         return 32 - popcnt(x);
     }
 
-    inline std::uint32_t ctz(std::uint32_t x) {
+    inline std::uint32_t ctz(std::uint32_t x)
+    {
         return popcnt((std::uint32_t)(x & -(int)x) - 1);
     }
 #endif
 
-    inline
-    void LoadFileContents(
-        std::string const& name,
+    template <typename T>
+    inline T max3(T a, T b, T c)
+    {
+        return std::max(std::max(a, b), c);
+    }
+
+    template <typename T>
+    inline T min3(T a, T b, T c)
+    {
+        return std::min(std::min(a, b), c);
+    }
+
+    inline void LoadFileContents(std::string const& name,
         std::vector<char>& contents,
-        bool binary = false) {
-        std::ifstream in(name, std::ios::in | (std::ios_base::openmode)(binary ? std::ios::binary : 0));
-        if (in) {
+        bool binary = false)
+    {
+        std::ifstream in(name, std::ios::in |
+            (std::ios_base::openmode)(binary ? std::ios::binary : 0));
+        if (in)
+        {
             contents.clear();
             std::streamoff beg = in.tellg();
             in.seekg(0, std::ios::end);
@@ -94,7 +114,9 @@ namespace RadeonRays {
             in.seekg(0, std::ios::beg);
             contents.resize(static_cast<unsigned>(fileSize));
             in.read(&contents[0], fileSize);
-        } else {
+        }
+        else
+        {
             throw std::runtime_error("Cannot read the contents of a file");
         }
     }

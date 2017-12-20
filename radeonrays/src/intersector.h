@@ -23,14 +23,26 @@ THE SOFTWARE.
 #include <vulkan/vulkan.hpp>
 #include "world.h"
 
-namespace RadeonRays {
-    class Intersector {
+namespace RadeonRays
+{
+    // Base class for all the intersectors, capable of:
+    //  * Handling the scene
+    //  * Binding ray buffers
+    //  * Doing ray queries
+    class Intersector
+    {
     public:
         Intersector() = default;
         virtual ~Intersector() = default;
 
-        virtual void BindBuffers(vk::Buffer rays, vk::Buffer hits, std::uint32_t num_rays) = 0;
+        // Set ray buffer to read from and hit buffer to write to
+        virtual void BindBuffers(vk::Buffer rays,
+            vk::Buffer hits,
+            std::uint32_t num_rays) = 0;
+
+        // Commit scene changes
         virtual vk::CommandBuffer Commit(World const& world) = 0;
+        // Trace num_rays rays
         virtual vk::CommandBuffer TraceRays(std::uint32_t num_rays) = 0;
 
         Intersector(Intersector const&) = delete;

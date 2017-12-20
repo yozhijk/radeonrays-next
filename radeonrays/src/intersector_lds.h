@@ -30,24 +30,33 @@ THE SOFTWARE.
 #include "bvh.h"
 #include "bvh_encoder.h"
 
-namespace RadeonRays {
-    template <typename BVH, typename BVHTraits> 
-    class IntersectorLDS : public Intersector {
+namespace RadeonRays
+{
+    // Intersector is using binary BVH with two bounding boxes per node.
+    // Traversal is using a stack which is split into two parts :
+    // -Top part in fast LDS memory
+    // - Bottom part in slow global memory.
+    // Push operations first check for top part overflow and offload top
+    // part into slow global memory if necessary.
+    // Pop operations first check for top part emptiness and try to offload
+    // from bottom part if necessary.
+    template <typename BVH, typename BVHTraits>
+    class IntersectorLDS : public Intersector
+    {
         static std::uint32_t constexpr kNumBindings = 4u;
         static std::uint32_t constexpr kWorgGroupSize = 64u;
 
     public:
-        IntersectorLDS(
-            vk::Device device,
+        IntersectorLDS(vk::Device device,
             vk::CommandPool cmdpool,
             vk::DescriptorPool descpool,
             vk::PipelineCache pipeline_cache,
-            VkMemoryAlloc& alloc
-        );
-
+            VkMemoryAlloc& alloc);
         ~IntersectorLDS() override;
 
-        void BindBuffers(vk::Buffer rays, vk::Buffer hits, std::uint32_t num_rays) override;
+        void BindBuffers(vk::Buffer rays,
+            vk::Buffer hits,
+            std::uint32_t num_rays) override;
         vk::CommandBuffer Commit(World const& world) override;
         vk::CommandBuffer TraceRays(std::uint32_t num_rays) override;
 
@@ -57,20 +66,19 @@ namespace RadeonRays {
     private:
         // The function checks if BVH buffers have enough space and
         // reallocates if necessary.
-        void CheckAndReallocBVH(std::size_t required_size) {
-            if (bvh_staging_.size < required_size) {
-
+        void CheckAndReallocBVH(std::size_t required_size)
+        {
+            if (bvh_staging_.size < required_size)
+            {
                 alloc_.deallocate(bvh_staging_);
                 alloc_.deallocate(bvh_local_);
 
-                bvh_staging_ = alloc_.allocate(
-                    vk::MemoryPropertyFlagBits::eHostVisible,
+                bvh_staging_ = alloc_.allocate(vk::MemoryPropertyFlagBits::eHostVisible,
                     vk::BufferUsageFlagBits::eTransferSrc,
                     required_size,
                     16u);
 
-                bvh_local_ = alloc_.allocate(
-                    vk::MemoryPropertyFlagBits::eDeviceLocal,
+                bvh_local_ = alloc_.allocate(vk::MemoryPropertyFlagBits::eDeviceLocal,
                     vk::BufferUsageFlagBits::eStorageBuffer |
                     vk::BufferUsageFlagBits::eTransferDst,
                     required_size,
@@ -79,11 +87,12 @@ namespace RadeonRays {
         }
 
         // Check if we have enough memory in the stack buffer
-        void CheckAndReallocStackBuffer(std::size_t required_size) {
-            if (stack_.size < required_size) {
+        void CheckAndReallocStackBuffer(std::size_t required_size)
+        {
+            if (stack_.size < required_size)
+            {
                 alloc_.deallocate(stack_);
-                stack_ = alloc_.allocate(
-                    vk::MemoryPropertyFlagBits::eDeviceLocal,
+                stack_ = alloc_.allocate(vk::MemoryPropertyFlagBits::eDeviceLocal,
                     vk::BufferUsageFlagBits::eStorageBuffer,
                     required_size,
                     16u);
@@ -122,18 +131,17 @@ namespace RadeonRays {
     };
 
     template <typename BVH, typename BVHTraits>
-    inline IntersectorLDS<BVH, BVHTraits>::IntersectorLDS(
-        vk::Device device,
+    inline IntersectorLDS<BVH, BVHTraits>::IntersectorLDS(vk::Device device,
         vk::CommandPool cmdpool,
         vk::DescriptorPool descpool,
         vk::PipelineCache pipeline_cache,
-        VkMemoryAlloc& alloc
-    )
+        VkMemoryAlloc& alloc)
         : device_(device)
         , cmdpool_(cmdpool)
         , descpool_(descpool)
         , pipeline_cache_(pipeline_cache)
-        , alloc_(alloc) {
+        , alloc_(alloc)
+    {
         // Create bindings:
         // (0) Ray buffer 
         // (1) Hit buffer 
@@ -142,7 +150,8 @@ namespace RadeonRays {
         vk::DescriptorSetLayoutBinding layout_binding[kNumBindings];
 
         // Initialize bindings
-        for (auto i = 0u; i < kNumBindings; ++i) {
+        for (auto i = 0u; i < kNumBindings; ++i)
+        {
             layout_binding[i]
                 .setBinding(i)
                 .setDescriptorCount(1)
@@ -202,15 +211,15 @@ namespace RadeonRays {
             pipeline_cache_,
             pipeline_create_info);
 
-        stack_ = alloc_.allocate(
-            vk::MemoryPropertyFlagBits::eDeviceLocal,
+        stack_ = alloc_.allocate(vk::MemoryPropertyFlagBits::eDeviceLocal,
             vk::BufferUsageFlagBits::eStorageBuffer,
             kInitialWorkBufferSize * kGlobalStackSize * sizeof(std::uint32_t),
             16u);
     }
 
     template <typename BVH, typename BVHTraits>
-    inline IntersectorLDS<BVH, BVHTraits>::~IntersectorLDS() {
+    inline IntersectorLDS<BVH, BVHTraits>::~IntersectorLDS()
+    {
         alloc_.deallocate(stack_);
         alloc_.deallocate(bvh_local_);
         alloc_.deallocate(bvh_staging_);
@@ -221,8 +230,8 @@ namespace RadeonRays {
     }
 
     template <typename BVH, typename BVHTraits>
-    inline
-    vk::CommandBuffer IntersectorLDS<BVH, BVHTraits>::Commit(World const& world) {
+    inline vk::CommandBuffer IntersectorLDS<BVH, BVHTraits>::Commit(World const& world)
+    {
         BVH bvh;
 
         // Build BVH
@@ -239,10 +248,9 @@ namespace RadeonRays {
         CheckAndReallocBVH(bvh_size_in_bytes);
 
         // Map staging buffer
-        auto ptr = device_.mapMemory(
-                bvh_staging_.memory,
-                bvh_staging_.offset,
-                bvh_size_in_bytes);
+        auto ptr = device_.mapMemory(bvh_staging_.memory,
+            bvh_staging_.offset,
+            bvh_size_in_bytes);
 
         // Copy BVH data
         BVHTraits::StreamBVH(bvh, ptr);
@@ -275,8 +283,7 @@ namespace RadeonRays {
         // Copy BVH data from staging to local
         vk::BufferCopy cmd_copy;
         cmd_copy.setSize(bvh_size_in_bytes);
-        cmdbuffers[0].copyBuffer(
-            bvh_staging_.buffer,
+        cmdbuffers[0].copyBuffer(bvh_staging_.buffer,
             bvh_local_.buffer,
             cmd_copy);
 
@@ -289,14 +296,12 @@ namespace RadeonRays {
             .setSrcAccessMask(vk::AccessFlagBits::eTransferWrite)
             .setDstAccessMask(vk::AccessFlagBits::eShaderRead);
 
-        cmdbuffers[0].pipelineBarrier(
-            vk::PipelineStageFlagBits::eTransfer,
+        cmdbuffers[0].pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
             vk::PipelineStageFlagBits::eComputeShader,
             vk::DependencyFlags{},
             nullptr,
             memory_barrier,
-            nullptr
-        );
+            nullptr);
 
         // End command buffer
         cmdbuffers[0].end();
@@ -305,14 +310,13 @@ namespace RadeonRays {
     }
 
     template <typename BVH, typename BVHTraits>
-    inline
-    void IntersectorLDS<BVH, BVHTraits>::BindBuffers(
-        vk::Buffer rays,
+    inline void IntersectorLDS<BVH, BVHTraits>::BindBuffers(vk::Buffer rays,
         vk::Buffer hits,
-        std::uint32_t num_rays) {
+        std::uint32_t num_rays)
+    {
 
         // Check if we have enough stack memory
-        auto stack_size_in_bytes = 
+        auto stack_size_in_bytes =
             num_rays * kGlobalStackSize * sizeof(std::uint32_t);
         CheckAndReallocStackBuffer(stack_size_in_bytes);
 
@@ -348,8 +352,8 @@ namespace RadeonRays {
     }
 
     template <typename BVH, typename BVHTraits>
-    inline
-    vk::CommandBuffer IntersectorLDS<BVH, BVHTraits>::TraceRays(std::uint32_t num_rays) {
+    inline vk::CommandBuffer IntersectorLDS<BVH, BVHTraits>::TraceRays(std::uint32_t num_rays)
+    {
         // Allocate command buffer
         vk::CommandBufferAllocateInfo cmdbuffer_alloc_info;
         cmdbuffer_alloc_info
@@ -365,13 +369,11 @@ namespace RadeonRays {
         cmdbuffers[0].begin(cmdbuffer_begin_info);
 
         // Bind intersection pipeline
-        cmdbuffers[0].bindPipeline(
-            vk::PipelineBindPoint::eCompute,
+        cmdbuffers[0].bindPipeline(vk::PipelineBindPoint::eCompute,
             pipeline_);
 
         // Bind descriptor sets
-        cmdbuffers[0].bindDescriptorSets(
-            vk::PipelineBindPoint::eCompute,
+        cmdbuffers[0].bindDescriptorSets(vk::PipelineBindPoint::eCompute,
             pipeline_layout_,
             0,
             descsets_,
@@ -379,8 +381,7 @@ namespace RadeonRays {
 
         // Push constants
         auto N = static_cast<std::uint32_t>(num_rays);
-        cmdbuffers[0].pushConstants(
-            pipeline_layout_,
+        cmdbuffers[0].pushConstants(pipeline_layout_,
             vk::ShaderStageFlagBits::eCompute,
             0u,
             sizeof(std::uint32_t),

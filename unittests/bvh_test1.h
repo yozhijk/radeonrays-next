@@ -180,13 +180,13 @@ TEST_F(BvhTest1, CornellBox_QBVH) {
 
 
             return aabb_contains_point(aabb_min, aabb_max, aabb0_min) &&
-                aabb_contains_point(aabb_min, aabb_max, aabb0_max) &&
-                (node.addr1_or_mesh_id == RR_INVALID_ID || (aabb_contains_point(aabb_min, aabb_max, aabb1_min) &&
-                    aabb_contains_point(aabb_min, aabb_max, aabb1_max))) &&
-                aabb_contains_point(aabb_min, aabb_max, aabb2_min) &&
-                aabb_contains_point(aabb_min, aabb_max, aabb2_max) &&
-                (node.addr3 == RR_INVALID_ID || (aabb_contains_point(aabb_min, aabb_max, aabb3_min) &&
-                    aabb_contains_point(aabb_min, aabb_max, aabb3_max)));
+                   aabb_contains_point(aabb_min, aabb_max, aabb0_max) &&
+                   (node.addr1_or_mesh_id == RR_INVALID_ID || (aabb_contains_point(aabb_min, aabb_max, aabb1_min) &&
+                   aabb_contains_point(aabb_min, aabb_max, aabb1_max))) &&
+                   aabb_contains_point(aabb_min, aabb_max, aabb2_min) &&
+                   aabb_contains_point(aabb_min, aabb_max, aabb2_max) &&
+                   (node.addr3 == RR_INVALID_ID || (aabb_contains_point(aabb_min, aabb_max, aabb3_min) &&
+                   aabb_contains_point(aabb_min, aabb_max, aabb3_max)));
         }
         else {
             return aabb_contains_point(aabb_min, aabb_max, (float*)node.aabb01_min_or_v0) &&
@@ -197,13 +197,13 @@ TEST_F(BvhTest1, CornellBox_QBVH) {
 
     while (!stack.empty()) {
         using namespace RadeonRays;
-        auto& node = *qbvh.GetNode(stack.top());
+        auto& node = *qbvh.node(stack.top());
         stack.pop();
 
         float cmin[3];
         float cmax[3];
 
-        auto& c0 = *qbvh.GetNode(node.addr0);
+        auto& c0 = *qbvh.node(node.addr0);
 
         copy3unpack_lo(node.aabb01_min_or_v0, cmin);
         copy3unpack_lo(node.aabb01_max_or_v1, cmax);
@@ -218,7 +218,7 @@ TEST_F(BvhTest1, CornellBox_QBVH) {
         }
 
         if (node.addr1_or_mesh_id != RR_INVALID_ID) {
-            auto& c1 = *qbvh.GetNode(node.addr1_or_mesh_id);
+            auto& c1 = *qbvh.node(node.addr1_or_mesh_id);
             copy3unpack_hi(node.aabb01_min_or_v0, cmin);
             copy3unpack_hi(node.aabb01_max_or_v1, cmax);
 
@@ -232,7 +232,7 @@ TEST_F(BvhTest1, CornellBox_QBVH) {
             }
         }
 
-        auto& c2 = *qbvh.GetNode(node.addr2_or_prim_id);
+        auto& c2 = *qbvh.node(node.addr2_or_prim_id);
         copy3unpack_lo(node.aabb23_min_or_v2, cmin);
         copy3unpack_lo(node.aabb23_max, cmax);
 
@@ -246,7 +246,7 @@ TEST_F(BvhTest1, CornellBox_QBVH) {
         }
 
         if (node.addr3 != RR_INVALID_ID) {
-            auto& c3 = *qbvh.GetNode(node.addr3);
+            auto& c3 = *qbvh.node(node.addr3);
             copy3unpack_hi(node.aabb23_min_or_v2, cmin);
             copy3unpack_hi(node.aabb23_max, cmax);
             ASSERT_TRUE(CheckInvariant(
@@ -321,13 +321,13 @@ TEST_F(BvhTest1, Sponza_QBVH) {
 
     while (!stack.empty()) {
         using namespace RadeonRays;
-        auto& node = *qbvh.GetNode(stack.top());
+        auto& node = *qbvh.node(stack.top());
         stack.pop();
 
         float cmin[3];
         float cmax[3];
 
-        auto& c0 = *qbvh.GetNode(node.addr0);
+        auto& c0 = *qbvh.node(node.addr0);
 
         copy3unpack_lo(node.aabb01_min_or_v0, cmin);
         copy3unpack_lo(node.aabb01_max_or_v1, cmax);
@@ -342,7 +342,7 @@ TEST_F(BvhTest1, Sponza_QBVH) {
         }
 
         if (node.addr1_or_mesh_id != RR_INVALID_ID) {
-            auto& c1 = *qbvh.GetNode(node.addr1_or_mesh_id);
+            auto& c1 = *qbvh.node(node.addr1_or_mesh_id);
             copy3unpack_hi(node.aabb01_min_or_v0, cmin);
             copy3unpack_hi(node.aabb01_max_or_v1, cmax);
 
@@ -356,7 +356,7 @@ TEST_F(BvhTest1, Sponza_QBVH) {
             }
         }
 
-        auto& c2 = *qbvh.GetNode(node.addr2_or_prim_id);
+        auto& c2 = *qbvh.node(node.addr2_or_prim_id);
         copy3unpack_lo(node.aabb23_min_or_v2, cmin);
         copy3unpack_lo(node.aabb23_max, cmax);
 
@@ -370,7 +370,7 @@ TEST_F(BvhTest1, Sponza_QBVH) {
         }
 
         if (node.addr3 != RR_INVALID_ID) {
-            auto& c3 = *qbvh.GetNode(node.addr3);
+            auto& c3 = *qbvh.node(node.addr3);
             copy3unpack_hi(node.aabb23_min_or_v2, cmin);
             copy3unpack_hi(node.aabb23_max, cmax);
             ASSERT_TRUE(CheckInvariant(

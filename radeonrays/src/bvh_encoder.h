@@ -26,9 +26,11 @@ THE SOFTWARE.
 #include <bvh.h>
 #include <shape.h>
 
-namespace RadeonRays {
+namespace RadeonRays
+{
     // Encoded node format.
-    struct BVHNode {
+    struct BVHNode
+    {
         // Left AABB min or vertex 0 for a leaf node
         float aabb_left_min_or_v0[3] = { 0.f, 0.f, 0.f };
         // Left child node address
@@ -49,21 +51,21 @@ namespace RadeonRays {
         static constexpr char const* kTraversalKernelFileName = "isect.comp.spv";
     };
 
-    struct PrimitiveTraits {
+    struct PrimitiveTraits
+    {
         using MetadataPtr = Shape const*;
 
-        static
-        std::size_t GetNumAABBs(Shape const* shape) {
+        static std::size_t GetNumAABBs(Shape const* shape)
+        {
             auto mesh = static_cast<Mesh const*>(shape);
             return mesh->num_faces();
         }
 
-        static
-        void GetAABB(
-            Shape const* shape,
+        static void GetAABB(Shape const* shape,
             std::size_t index,
             __m128& pmin,
-            __m128& pmax) {
+            __m128& pmax)
+        {
             auto mesh = static_cast<Mesh const*>(shape);
             auto face = mesh->GetIndexData(index);
             auto v0 = _mm_load_ps((float*)mesh->GetVertexDataPtr(face.idx[0]));
@@ -75,7 +77,8 @@ namespace RadeonRays {
     };
 
     // Properties of BVHNode
-    struct BVHNodeTraits {
+    struct BVHNodeTraits
+    {
         // Max triangles per leaf
         static std::uint32_t constexpr kMaxLeafPrimitives = 1u;
         // Threshold number of primitives to disable SAH split
@@ -84,8 +87,8 @@ namespace RadeonRays {
         static std::uint32_t constexpr kTraversalCost = 10u;
 
         // Create leaf node
-        static
-            void EncodeLeaf(BVHNode& node, std::uint32_t num_refs) {
+        static void EncodeLeaf(BVHNode& node, std::uint32_t num_refs)
+        {
             // This node only supports 1 triangle
             assert(num_refs == 1);
             node.addr_left = RR_INVALID_ID;
@@ -93,13 +96,12 @@ namespace RadeonRays {
         }
 
         // Create internal node
-        static
-            void EncodeInternal(
-                BVHNode& node,
-                __m128 aabb_min,
-                __m128 aabb_max,
-                std::uint32_t child0,
-                std::uint32_t child1) {
+        static void EncodeInternal(BVHNode& node,
+            __m128 aabb_min,
+            __m128 aabb_max,
+            std::uint32_t child0,
+            std::uint32_t child1)
+        {
             _mm_store_ps(node.aabb_left_min_or_v0, aabb_min);
             _mm_store_ps(node.aabb_left_max_or_v1, aabb_max);
             node.addr_left = child0;
@@ -107,11 +109,10 @@ namespace RadeonRays {
         }
 
         // Add primitive
-        static
-            void SetPrimitive(
-                BVHNode& node,
-                std::uint32_t index,
-                std::pair<Shape const*, std::size_t> ref) {
+        static void SetPrimitive(BVHNode& node,
+            std::uint32_t index,
+            std::pair<Shape const*, std::size_t> ref)
+        {
             auto mesh = static_cast<Mesh const*>(ref.first);
             auto vertices = mesh->GetFaceVertexData(ref.second);
             node.aabb_left_min_or_v0[0] = vertices[0].x;
@@ -127,18 +128,15 @@ namespace RadeonRays {
             node.prim_id = static_cast<std::uint32_t>(ref.second);
         }
 
-        static
-        bool IsInternal(BVHNode& node) {
+        static bool IsInternal(BVHNode& node)
+        {
             return node.addr_left != RR_INVALID_ID;
         }
 
-        static
-        std::uint32_t GetChildIndex(BVHNode& node, std::uint8_t idx) {
-            return IsInternal(node)
-                ? (idx == 0 ?
-                    node.addr_left
-                    : node.addr_right)
-                : RR_INVALID_ID;
+        static std::uint32_t GetChildIndex(BVHNode& node, std::uint8_t idx)
+        {
+            return IsInternal(node) ? (idx == 0 ? node.addr_left
+                : node.addr_right) : RR_INVALID_ID;
         }
 
         // We set 1 AABB for each node during BVH build process,
@@ -148,33 +146,35 @@ namespace RadeonRays {
         // we need to traverse the tree pulling child node AABBs 
         // into their parent node. That's exactly what PropagateBounds 
         // is doing.
-        static
-        void Finalize(BVH<BVHNode, BVHNodeTraits, PrimitiveTraits>& bvh) {
-
+        static void Finalize(BVH<BVHNode, BVHNodeTraits, PrimitiveTraits>& bvh)
+        {
             // Traversal stack
             std::stack<std::uint32_t> s;
             s.push(0);
 
-            while (!s.empty()) {
+            while (!s.empty())
+            {
                 auto idx = s.top();
                 s.pop();
                 // Fetch the node
-                auto node = bvh.GetNode(idx);
+                auto node = bvh.node(idx);
 
-                if (IsInternal(*node)) {
+                if (IsInternal(*node))
+                {
                     // If the node is internal we fetch child nodes
                     auto idx0 = GetChildIndex(*node, 0);
                     auto idx1 = GetChildIndex(*node, 1);
 
-                    auto child0 = bvh.GetNode(idx0);
-                    auto child1 = bvh.GetNode(idx1);
+                    auto child0 = bvh.node(idx0);
+                    auto child1 = bvh.node(idx1);
 
                     // If the child is internal node itself we pull it
                     // up the tree into its parent. If the child node is
                     // a leaf, then we do not have AABB for it (we store 
                     // vertices directly in the leaf), so we calculate 
                     // AABB on the fly.
-                    if (IsInternal(*child0)) {
+                    if (IsInternal(*child0))
+                    {
                         node->aabb_left_min_or_v0[0] = child0->aabb_left_min_or_v0[0];
                         node->aabb_left_min_or_v0[1] = child0->aabb_left_min_or_v0[1];
                         node->aabb_left_min_or_v0[2] = child0->aabb_left_min_or_v0[2];
@@ -183,36 +183,37 @@ namespace RadeonRays {
                         node->aabb_left_max_or_v1[2] = child0->aabb_left_max_or_v1[2];
                         s.push(idx0);
                     }
-                    else {
-                        node->aabb_left_min_or_v0[0] = std::min(
+                    else
+                    {
+                        node->aabb_left_min_or_v0[0] = min3(
                             child0->aabb_left_min_or_v0[0],
-                            std::min(child0->aabb_left_max_or_v1[0],
-                                child0->aabb_right_min_or_v2[0]));
+                            child0->aabb_left_max_or_v1[0],
+                            child0->aabb_right_min_or_v2[0]);
 
-                        node->aabb_left_min_or_v0[1] = std::min(
+                        node->aabb_left_min_or_v0[1] = min3(
                             child0->aabb_left_min_or_v0[1],
-                            std::min(child0->aabb_left_max_or_v1[1],
-                                child0->aabb_right_min_or_v2[1]));
+                            child0->aabb_left_max_or_v1[1],
+                            child0->aabb_right_min_or_v2[1]);
 
-                        node->aabb_left_min_or_v0[2] = std::min(
+                        node->aabb_left_min_or_v0[2] = min3(
                             child0->aabb_left_min_or_v0[2],
-                            std::min(child0->aabb_left_max_or_v1[2],
-                                child0->aabb_right_min_or_v2[2]));
+                            child0->aabb_left_max_or_v1[2],
+                            child0->aabb_right_min_or_v2[2]);
 
-                        node->aabb_left_max_or_v1[0] = std::max(
+                        node->aabb_left_max_or_v1[0] = max3(
                             child0->aabb_left_min_or_v0[0],
-                            std::max(child0->aabb_left_max_or_v1[0],
-                                child0->aabb_right_min_or_v2[0]));
+                            child0->aabb_left_max_or_v1[0],
+                            child0->aabb_right_min_or_v2[0]);
 
-                        node->aabb_left_max_or_v1[1] = std::max(
+                        node->aabb_left_max_or_v1[1] = max3(
                             child0->aabb_left_min_or_v0[1],
-                            std::max(child0->aabb_left_max_or_v1[1],
-                                child0->aabb_right_min_or_v2[1]));
+                            child0->aabb_left_max_or_v1[1],
+                            child0->aabb_right_min_or_v2[1]);
 
-                        node->aabb_left_max_or_v1[2] = std::max(
+                        node->aabb_left_max_or_v1[2] = max3(
                             child0->aabb_left_min_or_v0[2],
-                            std::max(child0->aabb_left_max_or_v1[2],
-                                child0->aabb_right_min_or_v2[2]));
+                            child0->aabb_left_max_or_v1[2],
+                            child0->aabb_right_min_or_v2[2]);
                     }
 
                     // If the child is internal node itself we pull it
@@ -220,7 +221,8 @@ namespace RadeonRays {
                     // a leaf, then we do not have AABB for it (we store 
                     // vertices directly in the leaf), so we calculate 
                     // AABB on the fly.
-                    if (IsInternal(*child1)) {
+                    if (IsInternal(*child1))
+                    {
                         node->aabb_right_min_or_v2[0] = child1->aabb_left_min_or_v0[0];
                         node->aabb_right_min_or_v2[1] = child1->aabb_left_min_or_v0[1];
                         node->aabb_right_min_or_v2[2] = child1->aabb_left_min_or_v0[2];
@@ -229,36 +231,37 @@ namespace RadeonRays {
                         node->aabb_right_max[2] = child1->aabb_left_max_or_v1[2];
                         s.push(idx1);
                     }
-                    else {
-                        node->aabb_right_min_or_v2[0] = std::min(
+                    else
+                    {
+                        node->aabb_right_min_or_v2[0] = min3(
                             child1->aabb_left_min_or_v0[0],
-                            std::min(child1->aabb_left_max_or_v1[0],
-                                child1->aabb_right_min_or_v2[0]));
+                            child1->aabb_left_max_or_v1[0],
+                            child1->aabb_right_min_or_v2[0]);
 
-                        node->aabb_right_min_or_v2[1] = std::min(
+                        node->aabb_right_min_or_v2[1] = min3(
                             child1->aabb_left_min_or_v0[1],
-                            std::min(child1->aabb_left_max_or_v1[1],
-                                child1->aabb_right_min_or_v2[1]));
+                            child1->aabb_left_max_or_v1[1],
+                            child1->aabb_right_min_or_v2[1]);
 
-                        node->aabb_right_min_or_v2[2] = std::min(
+                        node->aabb_right_min_or_v2[2] = min3(
                             child1->aabb_left_min_or_v0[2],
-                            std::min(child1->aabb_left_max_or_v1[2],
-                                child1->aabb_right_min_or_v2[2]));
+                            child1->aabb_left_max_or_v1[2],
+                            child1->aabb_right_min_or_v2[2]);
 
-                        node->aabb_right_max[0] = std::max(
+                        node->aabb_right_max[0] = max3(
                             child1->aabb_left_min_or_v0[0],
-                            std::max(child1->aabb_left_max_or_v1[0],
-                                child1->aabb_right_min_or_v2[0]));
+                            child1->aabb_left_max_or_v1[0],
+                            child1->aabb_right_min_or_v2[0]);
 
-                        node->aabb_right_max[1] = std::max(
+                        node->aabb_right_max[1] = max3(
                             child1->aabb_left_min_or_v0[1],
-                            std::max(child1->aabb_left_max_or_v1[1],
-                                child1->aabb_right_min_or_v2[1]));
+                            child1->aabb_left_max_or_v1[1],
+                            child1->aabb_right_min_or_v2[1]);
 
-                        node->aabb_right_max[2] = std::max(
+                        node->aabb_right_max[2] = max3(
                             child1->aabb_left_min_or_v0[2],
-                            std::max(child1->aabb_left_max_or_v1[2],
-                                child1->aabb_right_min_or_v2[2]));
+                            child1->aabb_left_max_or_v1[2],
+                            child1->aabb_right_min_or_v2[2]);
                     }
                 }
             }

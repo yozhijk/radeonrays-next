@@ -29,7 +29,8 @@ namespace RadeonRays
 {
     class Shape;
 
-    class World {
+    class World
+    {
         using ShapeList = std::vector<Shape const*>;
     public:
         using StateChange = std::uint32_t;

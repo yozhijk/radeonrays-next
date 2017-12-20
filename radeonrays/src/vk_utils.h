@@ -29,15 +29,15 @@ THE SOFTWARE.
 
 #include "utils.h"
 
-namespace RadeonRays {
-    static
-    vk::ShaderModule LoadShaderModule(vk::Device device, std::string const& file_name) {
+namespace RadeonRays
+{
+    static vk::ShaderModule LoadShaderModule(vk::Device device, std::string const& file_name)
+    {
         std::vector<char> bytecode;
         LoadFileContents(file_name, bytecode, true);
         vk::ShaderModuleCreateInfo info;
         info.setCodeSize(bytecode.size())
-            .setPCode(
-                reinterpret_cast<std::uint32_t*>(&bytecode[0]));
+            .setPCode(reinterpret_cast<std::uint32_t*>(&bytecode[0]));
 
         return device.createShaderModule(info);
     }

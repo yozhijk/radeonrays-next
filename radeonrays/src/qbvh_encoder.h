@@ -27,10 +27,12 @@ THE SOFTWARE.
 #include <bvh_encoder.h>
 #include <vector>
 
-namespace RadeonRays {
+namespace RadeonRays
+{
     // Encoded node format.
     // In QBVH we store 4x16-bits AABBs per node
-    struct QBVHNode {
+    struct QBVHNode
+    {
         // Min points of AABB 0 and 1 for internal node
         // or first triangle vertex for the leaf
         std::uint32_t aabb01_min_or_v0[3];
@@ -58,17 +60,20 @@ namespace RadeonRays {
     };
 
     // 4-BVH with 16bits AABBs
-    class QBVH {
+    class QBVH
+    {
     public:
         using NodeT = QBVHNode;
 
-        template<typename Iter> void Build(Iter begin, Iter end) {
+        template<typename Iter> void Build(Iter begin, Iter end)
+        {
             BVH<BVHNode, BVHNodeTraits, PrimitiveTraits> bvh;
             bvh.Build(begin, end);
 
             nodes_.resize(1);
 
-            struct Elem {
+            struct Elem
+            {
                 std::uint32_t bvh_node_index;
                 std::uint32_t qbvh_node_index;
             };
@@ -76,12 +81,14 @@ namespace RadeonRays {
             std::stack<Elem> stack;
             stack.push({ 0u, 0u });
 
-            while (!stack.empty()) {
-                auto node = bvh.GetNode(stack.top().bvh_node_index);
+            while (!stack.empty())
+            {
+                auto node = bvh.node(stack.top().bvh_node_index);
                 auto qbvh_node_index = stack.top().qbvh_node_index;
                 stack.pop();
 
-                if (!BVHNodeTraits::IsInternal(*node)) {
+                if (!BVHNodeTraits::IsInternal(*node))
+                {
                     nodes_[qbvh_node_index].addr0 = RR_INVALID_ID;
                     nodes_[qbvh_node_index].addr3 = RR_INVALID_ID;
 
@@ -97,10 +104,11 @@ namespace RadeonRays {
                 auto c0idx = BVHNodeTraits::GetChildIndex(*node, 0);
                 auto c1idx = BVHNodeTraits::GetChildIndex(*node, 1);
 
-                auto c0 = bvh.GetNode(c0idx);
-                auto c1 = bvh.GetNode(c1idx);
+                auto c0 = bvh.node(c0idx);
+                auto c1 = bvh.node(c1idx);
 
-                if (BVHNodeTraits::IsInternal(*c0)) {
+                if (BVHNodeTraits::IsInternal(*c0))
+                {
                     copy3pack_lo_min(c0->aabb_left_min_or_v0, nodes_[qbvh_node_index].aabb01_min_or_v0);
                     copy3pack_lo_max(c0->aabb_left_max_or_v1, nodes_[qbvh_node_index].aabb01_max_or_v1);
                     copy3pack_hi_min(c0->aabb_right_min_or_v2, nodes_[qbvh_node_index].aabb01_min_or_v0);
@@ -115,7 +123,9 @@ namespace RadeonRays {
 
                     stack.push({ BVHNodeTraits::GetChildIndex(*c0, 0),(std::uint32_t)idx });
                     stack.push({ BVHNodeTraits::GetChildIndex(*c0, 1),(std::uint32_t)idx + 1 });
-                } else {
+                }
+                else
+                {
                     copy3pack_lo_min(node->aabb_left_min_or_v0, nodes_[qbvh_node_index].aabb01_min_or_v0);
                     copy3pack_lo_max(node->aabb_left_max_or_v1, nodes_[qbvh_node_index].aabb01_max_or_v1);
 
@@ -135,7 +145,8 @@ namespace RadeonRays {
                     child_node.addr2_or_prim_id = c0->prim_id;
                 }
 
-                if (BVHNodeTraits::IsInternal(*c1)) {
+                if (BVHNodeTraits::IsInternal(*c1))
+                {
                     copy3pack_lo_min(c1->aabb_left_min_or_v0, nodes_[qbvh_node_index].aabb23_min_or_v2);
                     copy3pack_lo_max(c1->aabb_left_max_or_v1, nodes_[qbvh_node_index].aabb23_max);
                     copy3pack_hi_min(c1->aabb_right_min_or_v2, nodes_[qbvh_node_index].aabb23_min_or_v2);
@@ -150,7 +161,9 @@ namespace RadeonRays {
 
                     stack.push({ BVHNodeTraits::GetChildIndex(*c1, 0),(std::uint32_t)idx });
                     stack.push({ BVHNodeTraits::GetChildIndex(*c1, 1),(std::uint32_t)idx + 1 });
-                } else {
+                }
+                else
+                {
                     copy3pack_lo_min(node->aabb_right_min_or_v2, nodes_[qbvh_node_index].aabb23_min_or_v2);
                     copy3pack_lo_max(node->aabb_right_max, nodes_[qbvh_node_index].aabb23_max);
 
@@ -172,21 +185,10 @@ namespace RadeonRays {
             }
         }
 
-        void Clear() {
-            nodes_.resize(0);
-        }
-
-        auto root() const {
-            return nodes_[0];
-        }
-
-        auto num_nodes() const {
-            return nodes_.size();
-        }
-
-        auto GetNode(std::size_t idx) const {
-            return &nodes_[idx];
-        }
+        void Clear() { nodes_.resize(0); }
+        auto root() const { return nodes_[0]; }
+        auto num_nodes() const { return nodes_.size(); }
+        auto node(std::size_t idx) const { return &nodes_[idx]; }
 
     private:
         std::vector<QBVHNode> nodes_;

@@ -26,14 +26,17 @@ THE SOFTWARE.
 // VkMemoryAlloc manages device memory allocation.
 // Different memory type might be requested, allocator
 // manages separates pool for those.
-struct VkMemoryAlloc {
+struct VkMemoryAlloc
+{
     static std::size_t constexpr kChunkSize = 256 * 1024 * 1024;
-    static std::size_t align(std::size_t value, std::size_t alignment) {
+    static std::size_t align(std::size_t value, std::size_t alignment)
+    {
         return (value + (alignment - 1)) / alignment * alignment;
     }
 
     // Storage block is a unit of allocation managed by VkMemoryAlloc
-    struct StorageBlock {
+    struct StorageBlock
+    {
         // Memory storage
         vk::DeviceMemory memory;
         // Buffer (gets bound only on allocate)
@@ -45,8 +48,7 @@ struct VkMemoryAlloc {
         // Block memory type
         int memory_type_index;
 
-        StorageBlock(
-            vk::DeviceMemory m = nullptr,
+        StorageBlock(vk::DeviceMemory m = nullptr,
             vk::Buffer b = nullptr,
             vk::DeviceSize o = 0u,
             vk::DeviceSize s = 0u,
@@ -55,26 +57,27 @@ struct VkMemoryAlloc {
             , buffer(b)
             , offset(o)
             , size(s)
-            , memory_type_index(midx) {}
+            , memory_type_index(midx)
+        {}
     };
 
     // Ctor
-    VkMemoryAlloc(
-        vk::Device device,
+    VkMemoryAlloc(vk::Device device,
         vk::PhysicalDevice physical_device)
         : device_(device)
         , physical_device_(physical_device)
-        , memory_props_(physical_device.getMemoryProperties()) {}
+        , memory_props_(physical_device.getMemoryProperties())
+    {}
 
     // Dtor
-    ~VkMemoryAlloc() {
+    ~VkMemoryAlloc()
+    {
         ReleaseMemory();
     }
 
     // Allocate block of a specified size and type. Memory region is automatically 
     // bound to a buffer with a specified usage and put to block.buffer.
-    StorageBlock allocate(
-        // Memory type
+    StorageBlock allocate(// Memory type
         vk::MemoryPropertyFlags type,
         // Buffer usage
         vk::BufferUsageFlags usage,
@@ -86,11 +89,14 @@ struct VkMemoryAlloc {
 
 private:
     // Find memory type index corresponding to specified flags
-    int FindMemoryTypeIndex(vk::MemoryPropertyFlags type) {
+    int FindMemoryTypeIndex(vk::MemoryPropertyFlags type)
+    {
         int index = -1;
-        for (auto i = 0u; i < memory_props_.memoryTypeCount; i++) {
+        for (auto i = 0u; i < memory_props_.memoryTypeCount; i++)
+        {
             auto& memory_type = memory_props_.memoryTypes[i];
-            if ((memory_type.propertyFlags & type) == type) {
+            if ((memory_type.propertyFlags & type) == type)
+            {
                 index = i;
                 break;
             }
@@ -100,9 +106,12 @@ private:
     }
 
     // Release everything
-    void ReleaseMemory() {
-        for (auto& h : alloc_headers_) {
-            for (auto& m : h.second.memories_) {
+    void ReleaseMemory()
+    {
+        for (auto& h : alloc_headers_)
+        {
+            for (auto& m : h.second.memories_)
+            {
                 device_.freeMemory(m);
             }
         }
@@ -111,7 +120,8 @@ private:
     // Alloc header keeps free blocks and 
     // memory allocations for a specific 
     // memory type index
-    struct AllocHeader {
+    struct AllocHeader
+    {
         int mem_type_index;
         std::list<StorageBlock> free_blocks_;
         std::list<vk::DeviceMemory> memories_;
@@ -125,22 +135,25 @@ private:
     std::unordered_map<int, AllocHeader> alloc_headers_;
 };
 
-inline VkMemoryAlloc::StorageBlock VkMemoryAlloc::allocate(
-    vk::MemoryPropertyFlags type,
+inline
+VkMemoryAlloc::StorageBlock VkMemoryAlloc::allocate(vk::MemoryPropertyFlags type,
     vk::BufferUsageFlags usage,
     std::size_t size,
-    std::size_t alignment) {
+    std::size_t alignment)
+{
     // Try to find existing header for a given memory type flags
     auto memory_type_index = FindMemoryTypeIndex(type);
     auto iter = alloc_headers_.find(memory_type_index);
 
     // Insert new header if we could find existing one
-    if (iter == alloc_headers_.cend()) {
+    if (iter == alloc_headers_.cend())
+    {
         AllocHeader header;
         // Find corresponding memory type index
         header.mem_type_index = memory_type_index;
 
-        if (header.mem_type_index == -1) {
+        if (header.mem_type_index == -1)
+        {
             throw std::runtime_error("Cannot find specified memory type");
         }
 
@@ -153,21 +166,24 @@ inline VkMemoryAlloc::StorageBlock VkMemoryAlloc::allocate(
     auto& header = iter->second;
     // Try to find free block in the list of free blocks
     // taking requested alignment into account
-    auto free_block_iter = std::find_if(
-        header.free_blocks_.cbegin(),
-        header.free_blocks_.cend(),
-        [alignment, size](StorageBlock const& block) ->bool {
+    auto free_block_iter =
+        std::find_if(header.free_blocks_.cbegin(),
+            header.free_blocks_.cend(),
+            [alignment, size](StorageBlock const& block) ->bool
+    {
         // Aligned offset
         auto aligned_offset = align(block.offset, alignment);
         // Size adjusted according w/ alignmnet difference
         auto aligned_size = block.size - (aligned_offset - block.offset);
         return aligned_size >= size;
-    });
+    }
+    );
 
     // If we have not found a free block, we 
     // allocate new vk::DeviceMemory and create free block
     // out of it.
-    if (free_block_iter == header.free_blocks_.cend()) {
+    if (free_block_iter == header.free_blocks_.cend())
+    {
         // We round up to the size of minimum chunk
         auto memory_size = align(size, kChunkSize);
         auto alloc_info = vk::MemoryAllocateInfo{}
@@ -178,8 +194,7 @@ inline VkMemoryAlloc::StorageBlock VkMemoryAlloc::allocate(
         // Keep the memory in the list of memories
         header.memories_.push_back(memory);
         // Create free block covering the whole memory
-        header.free_blocks_.emplace_back(
-            memory,
+        header.free_blocks_.emplace_back(memory,
             nullptr,
             (vk::DeviceSize)0u,
             (vk::DeviceSize)memory_size,
@@ -205,7 +220,8 @@ inline VkMemoryAlloc::StorageBlock VkMemoryAlloc::allocate(
     // We have rest_block.size - free_block.size memory left in the block
     // so we put it into new block and insert.
     auto memory_left_in_block = rest_block.size - free_block.size;
-    if (memory_left_in_block > 0) {
+    if (memory_left_in_block > 0)
+    {
         rest_block.offset = free_block.offset + free_block.size;
         rest_block.size = memory_left_in_block;
         header.free_blocks_.push_back(rest_block);
@@ -224,15 +240,18 @@ inline VkMemoryAlloc::StorageBlock VkMemoryAlloc::allocate(
     return free_block;
 }
 
-inline void VkMemoryAlloc::deallocate(StorageBlock const& block) {
-    if (block.size == 0) {
+inline void VkMemoryAlloc::deallocate(StorageBlock const& block)
+{
+    if (block.size == 0)
+    {
         return;
     }
 
     auto iter = alloc_headers_.find(block.memory_type_index);
 
     // Insert new header if we could find existing one
-    if (iter == alloc_headers_.cend()) {
+    if (iter == alloc_headers_.cend())
+    {
         AllocHeader header;
         // Find corresponding memory type index
         header.mem_type_index = block.memory_type_index;

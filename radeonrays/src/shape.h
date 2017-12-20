@@ -24,8 +24,10 @@ THE SOFTWARE.
 #include "math/float3.h"
 #include "math/matrix.h"
 
-namespace RadeonRays {
-    class Shape {
+namespace RadeonRays
+{
+    class Shape
+    {
     public:
         using Id = std::int32_t;
         using Mask = std::uint32_t;
@@ -33,7 +35,8 @@ namespace RadeonRays {
 
         static constexpr Id kInvalidId = -1;
 
-        enum StateChangeFlags {
+        enum StateChangeFlags
+        {
             kStateChangeNone = 0x0,
             kStateChangeTransform = 0x1,
             kStateChangeMotion = 0x2,
@@ -43,23 +46,29 @@ namespace RadeonRays {
 
         Shape() = default;
         virtual ~Shape() = 0;
-        virtual bool is_instance() const noexcept{ return false; }
+        virtual bool is_instance() const noexcept { return false; }
 
-        void SetTransform(matrix const& m) noexcept {
-            transform_ = m; 
+        void SetTransform(matrix const& m) noexcept
+        {
+            transform_ = m;
             state_change_ |= kStateChangeTransform;
         }
         auto GetTransform() const noexcept { return transform_; }
-        void SetId(Id id) noexcept {
-            id_ = id; 
+
+        void SetId(Id id) noexcept
+        {
+            id_ = id;
             state_change_ |= kStateChangeId;
         }
         auto GetId() const noexcept { return id_; }
-        void SetMask(Mask mask) noexcept {
+
+        void SetMask(Mask mask) noexcept
+        {
             mask_ = mask;
             state_change_ |= kStateChangeMask;
         }
         auto GetMask() const noexcept { return mask_; }
+
         void OnCommit() const noexcept { state_change_ = kStateChangeNone; }
 
         StateChange state_change() const noexcept { return state_change_; }
