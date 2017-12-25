@@ -47,16 +47,19 @@ namespace RadeonRays
         static std::uint32_t constexpr kWorgGroupSize = 64u;
 
     public:
-        IntersectorLDS(vk::Device device,
+        IntersectorLDS(
+            vk::Device device,
             vk::CommandPool cmdpool,
             vk::DescriptorPool descpool,
             vk::PipelineCache pipeline_cache,
             VkMemoryAlloc& alloc);
         ~IntersectorLDS() override;
 
-        void BindBuffers(vk::Buffer rays,
+        void BindBuffers(
+            vk::Buffer rays,
             vk::Buffer hits,
             std::uint32_t num_rays) override;
+
         vk::CommandBuffer Commit(World const& world) override;
         vk::CommandBuffer TraceRays(std::uint32_t num_rays) override;
 
@@ -73,12 +76,13 @@ namespace RadeonRays
                 alloc_.deallocate(bvh_staging_);
                 alloc_.deallocate(bvh_local_);
 
-                bvh_staging_ = alloc_.allocate(vk::MemoryPropertyFlagBits::eHostVisible,
+                bvh_staging_ = alloc_.allocatevk::MemoryPropertyFlagBits::eHostVisible,
                     vk::BufferUsageFlagBits::eTransferSrc,
                     required_size,
                     16u);
 
-                bvh_local_ = alloc_.allocate(vk::MemoryPropertyFlagBits::eDeviceLocal,
+                bvh_local_ = alloc_.allocate(
+                    vk::MemoryPropertyFlagBits::eDeviceLocal,
                     vk::BufferUsageFlagBits::eStorageBuffer |
                     vk::BufferUsageFlagBits::eTransferDst,
                     required_size,

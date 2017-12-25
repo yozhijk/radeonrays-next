@@ -172,7 +172,8 @@ namespace RadeonRays {
 #endif
 #endif
             // Build BVH topology
-            BuildImpl(scene_min,
+            BuildImpl(
+                scene_min,
                 scene_max,
                 centroid_scene_min,
                 centroid_scene_max,
@@ -239,7 +240,8 @@ namespace RadeonRays {
         };
 
         // Handle BVH split request
-        NodeType HandleRequest(SplitRequest const& request,
+        NodeType HandleRequest(
+            SplitRequest const& request,
             float3 const* aabb_min,
             float3 const* aabb_max,
             float3 const* aabb_centroid,
